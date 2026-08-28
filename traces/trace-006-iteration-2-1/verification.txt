@@ -1,0 +1,27 @@
+Verification status: PENDING LOCAL RUN
+
+Required local checks:
+1. git pull
+2. python -m pytest
+3. refute verify benchmark\case_001 --provider ollama --model qwen3:0.6b --iteration 2.1 --llm-timeout 30
+4. refute eval-advanced benchmark --provider ollama --model qwen3:0.6b --iteration 2.1 --llm-timeout 30
+
+Expected single-case semantics:
+- output should say `mode: advanced iteration 2.1`;
+- output should say `discriminating reproduction found: yes/no`;
+- a generated test that fails on both original and patch must NOT terminate the retry loop as successful;
+- if an attempt fails on both versions, later Reproducer feedback must contain both original and patched execution evidence;
+- only original FAIL + patch PASS counts as a discriminating reproduction.
+
+Expected aggregate evidence paths:
+- artifacts/eval/advanced_iteration_2_1/summary.json
+- artifacts/eval/advanced_iteration_2_1/cases.jsonl
+- artifacts/eval/advanced_iteration_2_1/report.md
+- artifacts/eval/advanced_iteration_2_1/cases.partial.jsonl
+
+Frozen comparison points:
+- Baseline v1: 10.0% verdict accuracy, 57.1% false acceptance, 2.405s average runtime
+- Advanced Iteration 1: 40.0% verdict accuracy, 28.6% false acceptance, 5.641s average runtime
+- Advanced Iteration 2: 10.0% verdict accuracy, 0.0% false acceptance, 36.569s average runtime
+
+Do not mark Iteration 2.1 complete until local test and benchmark results are supplied by the human.
