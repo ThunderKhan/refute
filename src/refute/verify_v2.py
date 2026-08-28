@@ -14,7 +14,7 @@ from .agents.reproducer import (
 )
 from .evidence import EvidenceKind, EvidenceStore
 from .executor import run_command
-from .llm import LLM
+from .llm import LLM, LLMError
 from .models import ExecutionResult, Verdict, VerificationCase
 from .orchestrator import RunStage, VerificationRun
 
@@ -22,7 +22,7 @@ VERIFIER_SYSTEM_PROMPT = """You are the evidence-constrained verifier in a softw
 Use only the supplied Investigator hypothesis, existing-test evidence, and generated reproduction evidence.
 Do not invent execution facts and do not override explicit tool results.
 A generated reproduction is considered successful only when the same test fails on the original and passes on the patched version.
-Malformed reproduction generations are evidence that reproduction was not established; they are not proof that the patch works or fails.
+Malformed or timed-out reproduction generations are evidence that reproduction was not established; they are not proof that the patch works or fails.
 This iteration has no Challenger-generated nearby/adversarial tests yet.
 Return exactly one JSON object:
 {
@@ -128,10 +128,62 @@ def _feedback(result: ExecutionResult) -> str:
 
 def _generation_feedback(error: str) -> str:
     return (
-        "The prior reproduction response could not be used because it was malformed or unsafe: "
+        "The prior reproduction response could not be used: "
         f"{error}. Return ONLY one valid JSON object with string fields `rationale` and `test_code`. "
         "Escape newlines inside test_code as \\n. Do not include markdown fences or commentary."
     )
+
+
+def _investigate_with_retry(
+    case: VerificationCase,
+    llm: LLM,
+    store: EvidenceStore,
+    run: VerificationRun,
+    *,
+    max_attempts: int = 2,
+) -> Investigation:
+    last_error: LLMError | None = None
+    for attempt in range(1, max_attempts + 1):
+        try:
+            return investigate(case, llm)
+        except LLMError as exc:
+            last_error = exc
+            run.attach(store.record(
+                stage=RunStage.LOADED.value,
+                kind=EvidenceKind.OBSERVATION,
+                summary=f"Investigator provider attempt {attempt} failed: {exc}",
+                metadata={"attempt": attempt, "component": "investigator", "provider_error": True},
+            ))
+    assert last_error is not None
+    raise LLMError(
+        f"investigator failed after {max_attempts} provider attempts: {last_error}"
+    ) from last_error
+
+
+def _verifier_complete_with_retry(
+    llm: LLM,
+    user_payload: str,
+    store: EvidenceStore,
+    run: VerificationRun,
+    *,
+    max_attempts: int = 2,
+) -> str:
+    last_error: LLMError | None = None
+    for attempt in range(1, max_attempts + 1):
+        try:
+            return llm.complete(VERIFIER_SYSTEM_PROMPT, user_payload)
+        except LLMError as exc:
+            last_error = exc
+            run.attach(store.record(
+                stage=RunStage.REGRESSION_CHECKED.value,
+                kind=EvidenceKind.OBSERVATION,
+                summary=f"Verifier provider attempt {attempt} failed: {exc}",
+                metadata={"attempt": attempt, "component": "verifier", "provider_error": True},
+            ))
+    assert last_error is not None
+    raise LLMError(
+        f"verifier failed after {max_attempts} provider attempts: {last_error}"
+    ) from last_error
 
 
 def verify_case_v2(
@@ -156,7 +208,7 @@ def verify_case_v2(
         summary="verification case loaded; benchmark oracle withheld from agents",
     ))
 
-    investigation = investigate(case, llm)
+    investigation = _investigate_with_retry(case, llm, store, run)
     run.advance(RunStage.INVESTIGATED)
     run.attach(store.record(
         stage=RunStage.INVESTIGATED.value,
@@ -189,10 +241,22 @@ def verify_case_v2(
                 summary=f"Reproducer attempt {attempt_no} was unusable: {message}",
                 content=exc.raw_response,
                 suffix=".txt",
+                metadata={"attempt": attempt_no, "usable": False, "error": message},
+            ))
+            feedback = _generation_feedback(message)
+            continue
+        except LLMError as exc:
+            message = f"provider failure: {exc}"
+            generation_failures.append(message)
+            run.attach(store.record(
+                stage=RunStage.REPRODUCTION_ATTEMPTED.value,
+                kind=EvidenceKind.OBSERVATION,
+                summary=f"Reproducer attempt {attempt_no} provider failure: {exc}",
                 metadata={
                     "attempt": attempt_no,
                     "usable": False,
-                    "error": message,
+                    "provider_error": True,
+                    "error": str(exc),
                 },
             ))
             feedback = _generation_feedback(message)
@@ -308,7 +372,12 @@ def verify_case_v2(
         "successful_reproduction": successful is not None,
         "limitations": ["no challenger-generated nearby cases"],
     }
-    raw_verdict = llm.complete(VERIFIER_SYSTEM_PROMPT, json.dumps(verifier_input, indent=2))
+    raw_verdict = _verifier_complete_with_retry(
+        llm,
+        json.dumps(verifier_input, indent=2),
+        store,
+        run,
+    )
     verdict, reason = _parse_verdict(raw_verdict)
     run.advance(RunStage.VERDICT_READY)
     run.attach(store.record(
@@ -337,6 +406,7 @@ def verify_case_v2(
             "generated_reproduction": True,
             "bounded_reproduction_retry": True,
             "generation_failure_recovery": True,
+            "provider_timeout_recovery": True,
             "challenger": False,
         },
     }
