@@ -60,35 +60,35 @@ Normalized trace: `traces/trace-005-reproduction-loop/`.
 
 ## trajectory-006 — Advanced Iteration 2.1: discriminating reproduction semantics
 
-### Human instruction
+Human instruction: `Start with 2.1 and fix the errors`.
 
-> "Start with 2.1 and fix the errors"
+Iteration 2.1 repaired the reproduction semantics: only **original FAIL + patch PASS** counts as a successful generated reproduction. Original FAIL + patch FAIL/timeout is non-discriminating and feeds both outputs back to the next attempt; original PASS/timeout is treated as not reproduced.
 
-### Objective
+The human verified `31 passed in 18.56s` and then ran the ten-case benchmark with `qwen3:0.6b`. Iteration 2.1 measured 40.0% verdict accuracy, 0.0% false acceptance, and 52.584s average runtime. This recovered Iteration 1's accuracy while retaining Iteration 2's zero false-acceptance result, but runtime became substantially worse.
 
-Repair the evidence semantics before adding another agent. A generated test is now accepted as reproduction evidence only when it discriminates between implementations.
-
-### Observable implementation changes
-
-- added `src/refute/verify_v21.py`, leaving Iteration 2 available for reproducible comparison;
-- defined the only successful reproduction pattern as **original FAIL + patch PASS**;
-- changed **original FAIL + patch FAIL/timeout** into a non-discriminating outcome that feeds both execution outputs back to the next Reproducer attempt;
-- changed **original PASS/timeout** into a failed reproduction attempt that triggers retry;
-- added explicit `original_failed`, `patch_passed`, and `discriminating` evidence fields;
-- updated CLI support to accept `--iteration 2.1` and made 2.1 the default advanced path;
-- updated the batch evaluator to preserve separate `advanced_iteration_2_1` artifacts rather than overwriting Iteration 2;
-- added tests proving both-fail attempts are retried and only original-fail/patch-pass is accepted;
-- created the normalized trace during implementation.
-
-### Experimental question
-
-Does correcting the semantics of generated reproduction recover useful verdict accuracy while preserving Iteration 2's reduction in unsafe `complete_fix` approvals?
-
-### Verification status
-
-Local verification is pending. Required commands are recorded in `traces/trace-006-iteration-2-1/verification.txt`.
+The single-case validation exposed another flaw: a non-discriminating generated test could still pull the model toward an unsupported negative verdict even though the patched deterministic suite passed. That finding motivated evidence weighting in Iteration 2.2.
 
 Normalized trace: `traces/trace-006-iteration-2-1/`.
+
+---
+
+## trajectory-007 — Advanced Iteration 2.2: evidence weighting
+
+Human instruction: `go ahead with 2.2`.
+
+Iteration 2.2 assigns explicit confidence semantics to generated evidence:
+
+- **discriminating** = original FAIL + patch PASS, high-confidence evidence;
+- **non_discriminating** = original FAIL + patch FAIL/timeout, diagnostic-only evidence;
+- **not_reproduced** = original PASS/timeout, no negative evidence against the patch.
+
+A deterministic weighted-verdict gate prevents diagnostic-only or not-reproduced generated tests from justifying `partial_fix`, `ineffective_fix`, or `regression_introduced` when the patched deterministic suite passes and no high-confidence reproduction exists. The raw model proposal remains preserved in evidence.
+
+Iteration 2.2 also adds an early stagnation stop after two consecutive non-discriminating attempts, reducing wasted Reproducer calls when the local model is clearly not converging. Iterations 1, 2, and 2.1 remain available unchanged for ablation comparison, and 2.2 writes to its own evaluation directory.
+
+Local verification is pending and is recorded in `traces/trace-007-iteration-2-2/verification.txt`.
+
+Normalized trace: `traces/trace-007-iteration-2-2/`.
 
 ---
 
