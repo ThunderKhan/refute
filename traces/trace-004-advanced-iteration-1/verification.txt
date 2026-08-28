@@ -1,16 +1,37 @@
-Verification status: PENDING LOCAL RUN
+Verification status: COMPLETE
 
-Required local checks:
-1. git pull
-2. python -m pytest
-3. refute verify benchmark\case_001 --provider ollama --model qwen3:0.6b
-4. refute eval-advanced benchmark --provider ollama --model qwen3:0.6b
+Human local verification on Windows:
 
-Expected evidence paths:
-- artifacts/runs/<run_id>/evidence.jsonl
-- artifacts/runs/<run_id>/result.json
+Single-case advanced run:
+refute verify benchmark\case_001 --provider ollama --model qwen3:0.6b
+
+Observed:
+- case: case_001
+- mode: advanced iteration 1
+- run: case_001-8f1d803a16
+- original tests: FAIL (exit 1)
+- patched tests: PASS
+- verdict: complete_fix
+- evidence root: artifacts/runs/case_001-8f1d803a16
+
+Full benchmark run:
+refute eval-advanced benchmark --provider ollama --model qwen3:0.6b
+
+Observed:
+- cases: 10
+- verdict accuracy: 40.0%
+- false acceptance rate: 28.6%
+- average runtime: 5.641s
+
+Aggregate evidence paths:
 - artifacts/eval/advanced_iteration_1/summary.json
 - artifacts/eval/advanced_iteration_1/cases.jsonl
 - artifacts/eval/advanced_iteration_1/report.md
 
-Do not mark this trace complete until local results are supplied by the human.
+Comparison against frozen Baseline v1:
+- verdict accuracy: 10.0% -> 40.0% (+30 percentage points, 4x the baseline accuracy)
+- false acceptance rate: 57.1% -> 28.6% (approximately halved)
+- average runtime: 2.405s -> 5.641s (+3.236s/case, about 2.35x slower)
+
+Interpretation:
+Structured investigation plus deterministic execution materially improved reliability on the same ten benchmark cases, while increasing runtime. This iteration did not yet include generated reproductions or Challenger-generated adversarial cases.
