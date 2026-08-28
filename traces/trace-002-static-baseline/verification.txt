@@ -1,0 +1,15 @@
+Human local verification (Windows PowerShell)
+
+python -m pytest
+............ [100%]
+12 passed in 3.33s
+
+ollama list
+qwen3:0.6b
+
+Seed baseline results using qwen3:0.6b:
+- case_001: expected complete_fix; predicted partial_fix
+- case_002: expected partial_fix; predicted complete_fix
+- case_003: expected regression_introduced; predicted partial_fix
+
+The 0/3 seed result was treated as an early signal only, not the final benchmark.
