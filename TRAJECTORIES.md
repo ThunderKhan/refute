@@ -103,15 +103,59 @@ The baseline deliberately receives less capability than the eventual advanced wo
 
 ### Verification status
 
-The code was pushed to `main`. Automated baseline tests were added, but the coding agent cannot execute the repository in its current network-isolated tool environment. Local verification by the human is therefore required before this milestone is considered closed.
+The human verified this milestone locally:
 
-### Next evidence needed
+- `python -m pytest` returned `12 passed in 3.33s`,
+- local Ollama model `qwen3:0.6b` was used for all three seed cases,
+- case 001 ground truth `complete_fix` was predicted `partial_fix`,
+- case 002 ground truth `partial_fix` was predicted `complete_fix`,
+- case 003 ground truth `regression_introduced` was predicted `partial_fix`.
 
-Run locally:
+The initial static baseline therefore scored 0/3 on the seed set. This is only an early signal and is not treated as a final benchmark claim.
 
-```powershell
-python -m pytest
-refute baseline benchmark\case_001 --provider ollama --model <installed-model>
-```
+---
 
-Capture the test result and first real baseline verdict before expanding the benchmark or adding advanced verification logic.
+## trajectory-003 — Revised Milestones 1–2: benchmark evaluator and architecture backbone
+
+### Human instruction
+
+> "okay go ahead and implement add whatever is not addeed for milestone 1 and 2 for our revised architecture"
+
+### Agent objective
+
+Complete the missing pieces of the revised first two milestones without prematurely implementing the advanced semantic agents.
+
+The round targeted two things:
+
+1. turn the baseline into a reproducible batch experiment over a broader benchmark,
+2. introduce a real system architecture with an orchestrator and first-class evidence provenance.
+
+### Observable actions
+
+The coding agent created a temporary implementation branch, then added and fast-forwarded the completed work to `main`.
+
+The implementation added:
+
+- `refute eval-baseline <benchmark_dir>` for one-command batch evaluation,
+- aggregate verdict accuracy, false-acceptance rate, per-class accuracy, confusion matrix, runtime metadata and persisted reports,
+- `artifacts/eval/baseline/summary.json`, `cases.jsonl`, and `report.md`,
+- benchmark expansion from 3 to 10 controlled cases covering complete, partial, ineffective, regression-introducing and inconclusive outcomes,
+- an `evidence` package with typed evidence records and an append-only JSONL provenance store,
+- a `VerificationRun` orchestrator state machine with explicit legal stage transitions,
+- package boundaries for `agents`, `runtime`, `providers`, `benchmark`, and `evidence`,
+- `ARCHITECTURE.md` documenting the design thesis and advanced target flow,
+- automated tests for the evaluator, evidence store, orchestrator, and ten-case benchmark catalog.
+
+### Architecture decision
+
+The project deliberately does not turn every architectural role into a separate LLM call.
+
+The current invariant is:
+
+> Agents propose and reason. Deterministic tools observe. Evidence constrains the verdict.
+
+The advanced investigator, reproducer, challenger and verifier remain future capabilities. Milestone 2 only establishes the stable boundaries they will plug into.
+
+### Verification status
+
+The coding changes are on `main`, but this environment cannot run the local repository test suite. The human must run the updated tests and the ten-case baseline evaluation locally before the round is considered experimentally closed.
