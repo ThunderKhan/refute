@@ -183,6 +183,49 @@ Normalized trace: `traces/trace-003-evaluator-architecture/`.
 
 ---
 
+## trajectory-004 — Advanced Iteration 1: Investigator + runtime evidence
+
+### Human instruction
+
+> "okay let's implement this"
+
+### Agent objective
+
+Implement the first advanced verification path while preserving experimental isolation. This iteration adds structured semantic investigation, deterministic execution of existing tests, evidence provenance, and an evidence-constrained verdict. It deliberately excludes generated reproduction and Challenger behavior.
+
+### Observable actions
+
+The coding agent inspected the existing orchestrator, evidence subsystem, executor, CLI, and benchmark evaluator before editing. It then:
+
+- added `src/refute/agents/investigator.py` with a structured Investigator schema and parser,
+- extended the run state machine so Iteration 1 can skip generated reproduction while retaining that branch for later rounds,
+- added `src/refute/verify.py` to orchestrate investigation, original execution, patched execution, evidence persistence, and final evidence-constrained verdict generation,
+- added explicit capability flags so a run cannot imply that generated reproduction or Challenger checks occurred when they did not,
+- added `src/refute/benchmark/advanced_evaluator.py` for ten-case Advanced Iteration 1 evaluation,
+- exposed `refute verify` and `refute eval-advanced`,
+- added a fake-LLM integration test covering the two model calls, runtime execution, evidence JSONL, result manifest, and capability declarations,
+- created the normalized trace package during the implementation round.
+
+### Experimental question
+
+Does structured issue understanding plus deterministic runtime evidence improve verdict accuracy and reduce false acceptance relative to frozen Baseline v1?
+
+### Verification status
+
+Implementation is on `main`. Local verification is pending. The human should run:
+
+```powershell
+python -m pytest
+refute verify benchmark\case_001 --provider ollama --model qwen3:0.6b
+refute eval-advanced benchmark --provider ollama --model qwen3:0.6b
+```
+
+The trace must remain marked pending until those outputs are observed rather than inferred.
+
+Normalized trace: `traces/trace-004-advanced-iteration-1/`.
+
+---
+
 ## Ongoing trace-capture rule
 
 From this point onward, every substantial coding-agent round should update both this human-readable trajectory log and a normalized package under `traces/` while the work is still fresh.
