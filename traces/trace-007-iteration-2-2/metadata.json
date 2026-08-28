@@ -1,0 +1,9 @@
+{
+  "trace_id": "trace-007-iteration-2-2",
+  "project": "refute",
+  "iteration": "2.2",
+  "status": "pending_local_verification",
+  "human_instruction": "go ahead with 2.2",
+  "focus": "evidence weighting and bounded stagnation stop",
+  "benchmark_model": "qwen3:0.6b"
+}
