@@ -1,0 +1,16 @@
+Verification status: PENDING LOCAL RUN
+
+Required local checks:
+1. git pull
+2. python -m pytest
+3. refute verify benchmark\case_001 --provider ollama --model qwen3:0.6b
+4. refute eval-advanced benchmark --provider ollama --model qwen3:0.6b
+
+Expected evidence paths:
+- artifacts/runs/<run_id>/evidence.jsonl
+- artifacts/runs/<run_id>/result.json
+- artifacts/eval/advanced_iteration_1/summary.json
+- artifacts/eval/advanced_iteration_1/cases.jsonl
+- artifacts/eval/advanced_iteration_1/report.md
+
+Do not mark this trace complete until local results are supplied by the human.
