@@ -8,6 +8,9 @@ from dataclasses import dataclass
 from typing import Protocol
 
 
+DEFAULT_LLM_TIMEOUT_SECONDS = 30.0
+
+
 class LLMError(RuntimeError):
     """Raised when a configured language-model provider cannot return a response."""
 
@@ -21,7 +24,7 @@ class LLM(Protocol):
 class OllamaLLM:
     model: str
     base_url: str = "http://127.0.0.1:11434"
-    timeout_seconds: float = 120.0
+    timeout_seconds: float = DEFAULT_LLM_TIMEOUT_SECONDS
 
     def complete(self, system: str, user: str) -> str:
         payload = {
@@ -49,7 +52,7 @@ class OpenAICompatibleLLM:
     model: str
     base_url: str
     api_key: str
-    timeout_seconds: float = 120.0
+    timeout_seconds: float = DEFAULT_LLM_TIMEOUT_SECONDS
 
     def complete(self, system: str, user: str) -> str:
         payload = {
@@ -72,7 +75,31 @@ class OpenAICompatibleLLM:
             raise LLMError("provider returned an unexpected OpenAI-compatible response") from exc
 
 
-def provider_from_env(provider: str, model: str | None = None) -> LLM:
+def _resolve_timeout(timeout_seconds: float | None) -> float:
+    if timeout_seconds is not None:
+        if timeout_seconds <= 0:
+            raise LLMError("language-model timeout must be greater than zero")
+        return timeout_seconds
+    raw = os.getenv("REFUTE_LLM_TIMEOUT")
+    if raw:
+        try:
+            value = float(raw)
+        except ValueError as exc:
+            raise LLMError("REFUTE_LLM_TIMEOUT must be a number") from exc
+        if value <= 0:
+            raise LLMError("REFUTE_LLM_TIMEOUT must be greater than zero")
+        return value
+    return DEFAULT_LLM_TIMEOUT_SECONDS
+
+
+def provider_from_env(
+    provider: str,
+    model: str | None = None,
+    *,
+    timeout_seconds: float | None = None,
+) -> LLM:
+    resolved_timeout = _resolve_timeout(timeout_seconds)
+
     if provider == "ollama":
         resolved_model = model or os.getenv("REFUTE_MODEL")
         if not resolved_model:
@@ -80,6 +107,7 @@ def provider_from_env(provider: str, model: str | None = None) -> LLM:
         return OllamaLLM(
             model=resolved_model,
             base_url=os.getenv("REFUTE_OLLAMA_URL", "http://127.0.0.1:11434"),
+            timeout_seconds=resolved_timeout,
         )
 
     if provider == "openai-compatible":
@@ -101,6 +129,7 @@ def provider_from_env(provider: str, model: str | None = None) -> LLM:
             model=resolved_model,
             base_url=base_url,
             api_key=api_key,
+            timeout_seconds=resolved_timeout,
         )
 
     raise LLMError(f"unsupported provider: {provider}")
