@@ -20,7 +20,9 @@ class RunStage(str, Enum):
 
 _ALLOWED_TRANSITIONS: dict[RunStage, set[RunStage]] = {
     RunStage.LOADED: {RunStage.INVESTIGATED},
-    RunStage.INVESTIGATED: {RunStage.REPRODUCTION_ATTEMPTED},
+    # Iteration 1 intentionally skips generated reproduction. Later iterations can
+    # take the reproduction branch without changing the run model.
+    RunStage.INVESTIGATED: {RunStage.REPRODUCTION_ATTEMPTED, RunStage.ORIGINAL_VERIFIED},
     RunStage.REPRODUCTION_ATTEMPTED: {RunStage.ORIGINAL_VERIFIED},
     RunStage.ORIGINAL_VERIFIED: {RunStage.PATCH_VERIFIED},
     RunStage.PATCH_VERIFIED: {RunStage.CHALLENGED, RunStage.REGRESSION_CHECKED},
