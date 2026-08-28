@@ -1,27 +1,79 @@
-Verification status: PENDING LOCAL RUN
+Verification status: COMPLETE — LOCAL RUN RECORDED
 
-Required local checks:
-1. git pull
-2. python -m pytest
-3. refute verify benchmark\case_001 --provider ollama --model qwen3:0.6b --iteration 2.1 --llm-timeout 30
-4. refute eval-advanced benchmark --provider ollama --model qwen3:0.6b --iteration 2.1 --llm-timeout 30
+Local verification
+------------------
 
-Expected single-case semantics:
-- output should say `mode: advanced iteration 2.1`;
-- output should say `discriminating reproduction found: yes/no`;
-- a generated test that fails on both original and patch must NOT terminate the retry loop as successful;
-- if an attempt fails on both versions, later Reproducer feedback must contain both original and patched execution evidence;
-- only original FAIL + patch PASS counts as a discriminating reproduction.
+The human pulled the Iteration 2.1 implementation and ran:
 
-Expected aggregate evidence paths:
+`python -m pytest`
+
+Observed result:
+
+`31 passed in 18.56s`
+
+Single-case run
+---------------
+
+Command:
+
+`refute verify benchmark\case_001 --provider ollama --model qwen3:0.6b --iteration 2.1 --llm-timeout 30`
+
+Observed:
+- mode: advanced iteration 2.1
+- original tests: FAIL (exit 1)
+- patched tests: PASS
+- reproduction attempts: 1
+- discriminating reproduction found: no
+- last reproduction outcome: original FAIL / patch FAIL-or-timeout
+- verdict: `ineffective_fix`
+- reason claimed the patch did not resolve the issue, despite the patched existing suite passing
+
+This confirms the reproduction semantic fix itself is active: a generated test failing on both original and patch is no longer accepted as a successful reproduction. However, the final Verifier can still misinterpret the absence of a discriminating reproduction and over-weight a non-discriminating generated test relative to the deterministic existing-suite result.
+
+Ten-case Iteration 2.1 benchmark
+-------------------------------
+
+Command:
+
+`refute eval-advanced benchmark --provider ollama --model qwen3:0.6b --iteration 2.1 --llm-timeout 30`
+
+Observed case results:
+- case_001 -> `partial_fix` (wrong, 53.10s)
+- case_002 -> `partial_fix` (correct, 43.57s)
+- case_003 -> `regression_introduced` (correct, 48.16s)
+- case_004 -> `inconclusive` (wrong, 30.66s)
+- case_005 -> `partial_fix` (wrong, 41.92s)
+- case_006 -> `partial_fix` (correct, 74.43s)
+- case_007 -> `inconclusive` (wrong, 44.42s)
+- case_008 -> `partial_fix` (wrong, 97.12s)
+- case_009 -> `complete_fix` (correct, 44.65s)
+- case_010 -> `partial_fix` (wrong, 47.82s)
+
+Aggregate result:
+- cases: 10
+- completed cases: 10
+- errors: 0
+- verdict accuracy: 40.0%
+- false acceptance rate: 0.0%
+- average runtime: 52.584s
+
+Comparison
+----------
+
+- Baseline v1: 10.0% accuracy, 57.1% false acceptance, 2.405s average runtime
+- Advanced Iteration 1: 40.0% accuracy, 28.6% false acceptance, 5.641s average runtime
+- Advanced Iteration 2: 10.0% accuracy, 0.0% false acceptance, 36.569s average runtime
+- Advanced Iteration 2.1: 40.0% accuracy, 0.0% false acceptance, 52.584s average runtime
+
+Interpretation
+--------------
+
+Iteration 2.1 successfully corrected the evidence semantics introduced in Iteration 2: a test that fails on both versions is no longer treated as successful reproduction evidence. This recovered verdict accuracy from 10.0% back to 40.0% while retaining a 0.0% false-acceptance rate.
+
+The experiment also exposes the next bottleneck: the Reproducer/verifier path is expensive and often non-discriminating with `qwen3:0.6b`. In the single-case example, existing deterministic evidence says the patch passes the suite, but the final model still returns `ineffective_fix` because it over-weights a non-discriminating generated reproduction. The next iteration should explicitly constrain how non-discriminating reproduction evidence may influence verdicts before adding Challenger capability.
+
+Aggregate evidence paths:
 - artifacts/eval/advanced_iteration_2_1/summary.json
 - artifacts/eval/advanced_iteration_2_1/cases.jsonl
 - artifacts/eval/advanced_iteration_2_1/report.md
 - artifacts/eval/advanced_iteration_2_1/cases.partial.jsonl
-
-Frozen comparison points:
-- Baseline v1: 10.0% verdict accuracy, 57.1% false acceptance, 2.405s average runtime
-- Advanced Iteration 1: 40.0% verdict accuracy, 28.6% false acceptance, 5.641s average runtime
-- Advanced Iteration 2: 10.0% verdict accuracy, 0.0% false acceptance, 36.569s average runtime
-
-Do not mark Iteration 2.1 complete until local test and benchmark results are supplied by the human.
