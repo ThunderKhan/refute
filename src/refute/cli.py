@@ -12,6 +12,7 @@ from .llm import LLMError, provider_from_env
 from .verify import verify_case
 from .verify_v2 import verify_case_v2
 from .verify_v21 import verify_case_v21
+from .verify_v22 import verify_case_v22
 
 
 def _status(result) -> str:
@@ -57,7 +58,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     verify_parser = subparsers.add_parser(
         "verify",
-        help="Run an advanced verification iteration. Defaults to Iteration 2.1.",
+        help="Run an advanced verification iteration. Defaults to Iteration 2.2.",
     )
     verify_parser.add_argument("case_dir", type=Path)
     _add_provider_args(verify_parser)
@@ -65,15 +66,15 @@ def build_parser() -> argparse.ArgumentParser:
     verify_parser.add_argument("--timeout", type=float, default=20.0)
     verify_parser.add_argument(
         "--iteration",
-        choices=("1", "2", "2.1"),
-        default="2.1",
-        help="Advanced verification iteration to run. Defaults to 2.1.",
+        choices=("1", "2", "2.1", "2.2"),
+        default="2.2",
+        help="Advanced verification iteration to run. Defaults to 2.2.",
     )
     verify_parser.add_argument(
         "--max-reproduction-attempts",
         type=int,
         default=3,
-        help="Maximum generated reproduction attempts for Iterations 2 and 2.1.",
+        help="Maximum generated reproduction attempts for Iterations 2.x.",
     )
 
     advanced_parser = subparsers.add_parser(
@@ -86,15 +87,15 @@ def build_parser() -> argparse.ArgumentParser:
     advanced_parser.add_argument("--timeout", type=float, default=20.0)
     advanced_parser.add_argument(
         "--iteration",
-        choices=("1", "2", "2.1"),
-        default="2.1",
-        help="Advanced verification iteration to evaluate. Defaults to 2.1.",
+        choices=("1", "2", "2.1", "2.2"),
+        default="2.2",
+        help="Advanced verification iteration to evaluate. Defaults to 2.2.",
     )
     advanced_parser.add_argument(
         "--max-reproduction-attempts",
         type=int,
         default=3,
-        help="Maximum generated reproduction attempts per case for Iterations 2 and 2.1.",
+        help="Maximum generated reproduction attempts per case for Iterations 2.x.",
     )
 
     return parser
@@ -208,8 +209,16 @@ def main(argv: list[str] | None = None) -> int:
                     timeout_seconds=args.timeout,
                     max_reproduction_attempts=args.max_reproduction_attempts,
                 )
-            else:
+            elif args.iteration == "2.1":
                 result = verify_case_v21(
+                    case,
+                    llm,
+                    artifacts_root=args.artifacts,
+                    timeout_seconds=args.timeout,
+                    max_reproduction_attempts=args.max_reproduction_attempts,
+                )
+            else:
+                result = verify_case_v22(
                     case,
                     llm,
                     artifacts_root=args.artifacts,
@@ -255,6 +264,26 @@ def main(argv: list[str] | None = None) -> int:
                         )
                     )
                 )
+        elif args.iteration == "2.2":
+            print(f"reproduction attempts: {len(result.reproduction_attempts)}")
+            print(
+                "discriminating reproduction found: "
+                + ("yes" if result.discriminating_reproduction is not None else "no")
+            )
+            counts = {
+                name: sum(item.classification == name for item in result.reproduction_attempts)
+                for name in ("discriminating", "non_discriminating", "not_reproduced")
+            }
+            print(
+                "reproduction evidence: "
+                f"high={counts['discriminating']} "
+                f"diagnostic={counts['non_discriminating']} "
+                f"none={counts['not_reproduced']}"
+            )
+            print(
+                "stopped early for stagnation: "
+                + ("yes" if result.stopped_for_stagnation else "no")
+            )
         print(f"verdict: {result.verdict.value}")
         print(f"reason: {result.reason}")
         print(f"evidence: {result.run_root}")
