@@ -1,0 +1,30 @@
+Verification status: PENDING LOCAL RUN
+
+Required local checks:
+1. git pull
+2. python -m pytest
+3. refute verify benchmark\case_001 --provider ollama --model qwen3:0.6b --iteration 2.3 --llm-timeout 30
+4. refute verify benchmark\case_002 --provider ollama --model qwen3:0.6b --iteration 2.3 --llm-timeout 30
+5. refute eval-advanced benchmark --provider ollama --model qwen3:0.6b --iteration 2.3 --llm-timeout 30
+
+Expected behavior:
+- Iteration 2.3 runs the existing original/patched suites before deciding whether generated reproduction is useful.
+- CLI prints a deterministic test-delta classification and counts of fixed/remaining/new failures.
+- Cases with mechanically decisive failure-set deltas can skip generated reproduction and the final semantic verifier.
+- case_002 should be a useful smoke test for deterministic partial-progress classification.
+- suite-repaired or otherwise ambiguous cases may still invoke generated reproduction and the semantic verifier.
+
+Separate aggregate artifacts:
+- artifacts/eval/advanced_iteration_2_3/summary.json
+- artifacts/eval/advanced_iteration_2_3/cases.jsonl
+- artifacts/eval/advanced_iteration_2_3/report.md
+- artifacts/eval/advanced_iteration_2_3/cases.partial.jsonl
+
+Frozen comparison points:
+- Baseline v1: 10.0% accuracy, 57.1% false acceptance, 2.405s average runtime
+- Iteration 1: 40.0% accuracy, 28.6% false acceptance, 5.641s average runtime
+- Iteration 2: 10.0% accuracy, 0.0% false acceptance, 36.569s average runtime
+- Iteration 2.1: 40.0% accuracy, 0.0% false acceptance, 52.584s average runtime
+- Iteration 2.2: 30.0% accuracy, 0.0% false acceptance, 50.863s average runtime
+
+Do not claim Iteration 2.3 improvement until the human supplies the local results.
