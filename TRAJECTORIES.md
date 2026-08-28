@@ -1,30 +1,14 @@
 # Agent Trajectories
 
-This file records representative coding-agent trajectories used to build `refute` during the Frontier Engineering Challenge 2026.
-
-The goal is to preserve the agent instruction, observable actions/tool results, feedback, retries, and human checkpoints without reconstructing them after the hackathon.
-
-Portable normalized trace packages are stored under `traces/`. Those packages are provider-neutral, exclude secrets, and are intended to make later conversion to any required acquisition/submission format easier.
+This file records representative coding-agent trajectories used to build `refute` during the Frontier Engineering Challenge 2026. Portable normalized trace packages are stored under `traces/`; they preserve observable prompts/instructions, actions, tool feedback, failures, retries, verification, and human checkpoints without reconstructing hidden reasoning.
 
 ---
 
 ## trajectory-001 — Milestone 1 deterministic spine
 
-### Human instruction
+Human instruction: `go ahead and implement milestone one I give you permission to push code to github`.
 
-> "go ahead and implement milestone one I give you permission to push code to github"
-
-### Agent objective
-
-Implement the first runnable engineering milestone before adding any LLM-based patch reasoning: package configuration, verification data models, benchmark-case loader, deterministic command executor, case inspection CLI, three seed fixtures, and tests.
-
-### Tool feedback / verification
-
-The coding agent could not clone the repository in its execution sandbox because `github.com` could not be resolved. The human later verified locally that editable installation succeeded, `python -m pytest` returned `8 passed in 3.90s`, and `refute inspect benchmark\case_001` showed the expected original-fail/patched-pass behavior with persisted execution evidence.
-
-### Result
-
-Milestone 1 established the deterministic spine needed for later measured agentic work.
+The round established package configuration, verification models, benchmark loading, deterministic command execution, case inspection, seed fixtures, and tests. The human later verified `8 passed in 3.90s` and original-fail/patched-pass execution on `case_001`.
 
 Normalized trace: `traces/trace-001-milestone-1/`.
 
@@ -32,131 +16,82 @@ Normalized trace: `traces/trace-001-milestone-1/`.
 
 ## trajectory-002 — Static-review baseline
 
-### Human instruction
+Human instruction: `alright go ahead and implement the next step`.
 
-> "alright go ahead and implement the next step"
-
-### Agent objective
-
-Implement a fair static baseline that sees issue text and a source diff only, without execution, reproduction, or benchmark-oracle leakage.
-
-### Observable actions
-
-The coding agent added local Ollama/OpenAI-compatible provider support, structured static-review prompting and parsing, persisted prompt/response/result artifacts, CLI support, and fake-LLM tests.
-
-### Verification status
-
-The human verified `12 passed in 3.33s` and ran `qwen3:0.6b` on the three seed cases. The baseline scored 0/3 on that preliminary set.
+The round added the intentionally limited static LLM baseline, provider abstraction, issue+diff prompting, structured verdict parsing, persisted prompt/response/result artifacts, CLI support, and fake-LLM tests. The human verified `12 passed in 3.33s`; the preliminary three-case run scored 0/3.
 
 Normalized trace: `traces/trace-002-static-baseline/`.
 
 ---
 
-## trajectory-003 — Revised Milestones 1–2: benchmark evaluator and architecture backbone
+## trajectory-003 — Evaluator and architecture backbone
 
-### Human instruction
+Human instruction: `okay go ahead and implement add whatever is not addeed for milestone 1 and 2 for our revised architecture`.
 
-> "okay go ahead and implement add whatever is not addeed for milestone 1 and 2 for our revised architecture"
-
-### Agent objective
-
-Turn the baseline into a reproducible batch experiment and introduce a real architecture with explicit orchestration and evidence provenance.
-
-### Observable actions
-
-The implementation added the ten-case benchmark, `refute eval-baseline`, aggregate metrics and reports, the evidence subsystem, the `VerificationRun` state machine, package boundaries, `ARCHITECTURE.md`, and automated tests.
-
-### Verification status
-
-The human ran the ten-case baseline with local Ollama `qwen3:0.6b` and observed:
-
-- verdict accuracy: 10.0%,
-- false acceptance rate: 57.1%,
-- average runtime: 2.405 seconds.
-
-This exact configuration is frozen as Baseline v1.
+This round added the ten-case benchmark, batch baseline evaluator, evidence store, orchestration state machine, package boundaries, and architecture documentation. The human ran frozen Baseline v1 with `qwen3:0.6b`: 10.0% verdict accuracy, 57.1% false acceptance, 2.405s average runtime.
 
 Normalized trace: `traces/trace-003-evaluator-architecture/`.
 
 ---
 
-## trajectory-004 — Advanced Iteration 1: Investigator + runtime evidence
+## trajectory-004 — Advanced Iteration 1
 
-### Human instruction
+Human instruction: `okay let's implement this`.
 
-> "okay let's implement this"
-
-### Agent objective
-
-Add structured semantic investigation plus deterministic execution of existing tests, while deliberately excluding generated reproduction and Challenger behavior.
-
-### Observable actions
-
-The coding agent added the Investigator, Iteration 1 verifier, evidence-constrained verdicting, capability flags, advanced batch evaluation, CLI commands, and a fake-LLM integration test.
-
-### Verification status
-
-The human verified a case-level run on `case_001`: original tests failed, patched tests passed, and the system returned `complete_fix`.
-
-The human then ran the same ten-case benchmark with `qwen3:0.6b` and observed:
-
-- verdict accuracy: 40.0%,
-- false acceptance rate: 28.6%,
-- average runtime: 5.641 seconds.
-
-Compared with Baseline v1, this is +30 percentage points in verdict accuracy and approximately halves the false-acceptance rate, at the cost of additional runtime.
+Iteration 1 added the Investigator, deterministic existing-test execution, evidence persistence, and evidence-constrained verifier while intentionally excluding generated reproduction and Challenger behavior. The human measured 40.0% verdict accuracy, 28.6% false acceptance, and 5.641s average runtime on the same ten cases.
 
 Normalized trace: `traces/trace-004-advanced-iteration-1/`.
 
 ---
 
-## trajectory-005 — Advanced Iteration 2: generated reproduction + bounded retry
+## trajectory-005 — Advanced Iteration 2: reproduction loop
 
-### Human instruction
+Human instruction: `implement it`.
 
-> "implement it"
+Iteration 2 added generated pytest reproduction, bounded execution-feedback retry, generated-test safety validation, provider/malformed-output recovery, a deterministic verdict gate, batch progress/checkpointing, and configurable LLM timeouts. During local validation, several real failures were preserved and fixed: malformed JSON, unusable model output, provider timeouts, a verifier contradiction, and slow opaque batch behavior.
 
-### Agent objective
+The final clean ten-case Iteration 2 run with `qwen3:0.6b` measured 10.0% verdict accuracy, 0.0% false acceptance, and 36.569s average runtime. This was a negative capability experiment: the system became safer against false approval but much less accurate and much slower.
 
-Add the first explicit agent/tool feedback loop: generate a focused pytest reproduction, run it against the original implementation first, retry with execution feedback when it does not reproduce the bug, then run the same successful reproduction against the patched implementation.
-
-### Observable actions
-
-The coding agent:
-
-- inspected the existing Investigator, orchestrator, evidence store, Iteration 1 verifier, evaluator, CLI, and tests,
-- kept Iteration 1 intact for reproducible comparison,
-- added `src/refute/agents/reproducer.py` with structured output parsing and conservative AST validation that blocks obvious dangerous modules/calls,
-- added `src/refute/verify_v2.py` with bounded reproduction attempts, original-first validation, same-test patched execution, evidence persistence, existing-suite execution, and an evidence-constrained final verdict,
-- updated the evaluator to support explicit Iterations 1 and 2 with separate report directories,
-- updated the CLI so Iteration 2 is the default advanced path while `--iteration 1` remains available,
-- added tests for generated-test safety checks and a deterministic two-attempt retry flow,
-- created the normalized trace package while implementation was still in progress.
-
-### Safety / execution decision
-
-Generated tests execute only inside the controlled benchmark trees. The temporary test file is removed after each run, while the canonical generated source and tool output remain persisted in the evidence store. The Reproducer prompt forbids network, subprocess, shell, destructive file operations, and benchmark-oracle references; AST validation enforces a conservative subset of those restrictions mechanically.
-
-### Experimental question
-
-Does generated bug reproduction with execution-feedback retry improve on Advanced Iteration 1's 40.0% accuracy / 28.6% false acceptance without introducing unacceptable runtime cost?
-
-### Verification status
-
-Implementation is on `main`. Local verification is pending. Required commands:
-
-```powershell
-python -m pytest
-refute verify benchmark\case_001 --provider ollama --model qwen3:0.6b --iteration 2
-refute eval-advanced benchmark --provider ollama --model qwen3:0.6b --iteration 2
-```
+The key semantic flaw discovered was that a generated test failing on both original and patch was still labeled a successful reproduction. That finding directly motivated Iteration 2.1.
 
 Normalized trace: `traces/trace-005-reproduction-loop/`.
 
 ---
 
+## trajectory-006 — Advanced Iteration 2.1: discriminating reproduction semantics
+
+### Human instruction
+
+> "Start with 2.1 and fix the errors"
+
+### Objective
+
+Repair the evidence semantics before adding another agent. A generated test is now accepted as reproduction evidence only when it discriminates between implementations.
+
+### Observable implementation changes
+
+- added `src/refute/verify_v21.py`, leaving Iteration 2 available for reproducible comparison;
+- defined the only successful reproduction pattern as **original FAIL + patch PASS**;
+- changed **original FAIL + patch FAIL/timeout** into a non-discriminating outcome that feeds both execution outputs back to the next Reproducer attempt;
+- changed **original PASS/timeout** into a failed reproduction attempt that triggers retry;
+- added explicit `original_failed`, `patch_passed`, and `discriminating` evidence fields;
+- updated CLI support to accept `--iteration 2.1` and made 2.1 the default advanced path;
+- updated the batch evaluator to preserve separate `advanced_iteration_2_1` artifacts rather than overwriting Iteration 2;
+- added tests proving both-fail attempts are retried and only original-fail/patch-pass is accepted;
+- created the normalized trace during implementation.
+
+### Experimental question
+
+Does correcting the semantics of generated reproduction recover useful verdict accuracy while preserving Iteration 2's reduction in unsafe `complete_fix` approvals?
+
+### Verification status
+
+Local verification is pending. Required commands are recorded in `traces/trace-006-iteration-2-1/verification.txt`.
+
+Normalized trace: `traces/trace-006-iteration-2-1/`.
+
+---
+
 ## Ongoing trace-capture rule
 
-Every substantial coding-agent round should update both this human-readable trajectory log and a normalized package under `traces/` while the work is still fresh.
-
-Each future trace should preserve, when available, the exact human instruction, objective, repository inspection/tool actions, edits/commit range, failures and retries, test/tool feedback, human checkpoints, measurable outcome, and model/provider metadata. Historical gaps must not be filled with invented details. Secrets and unrelated private data must never be recorded.
+Every substantial coding-agent round should update both this human-readable trajectory log and a normalized package under `traces/` while the work is still fresh. Preserve exact human instructions, observable repository/tool actions, failures/retries, verification, measurable outcomes, and relevant model/provider metadata. Do not invent historical gaps, include credentials, or expose private chain-of-thought.
