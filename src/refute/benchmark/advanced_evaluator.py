@@ -10,6 +10,7 @@ from ..llm import LLM, LLMError
 from ..models import Verdict
 from ..verify import verify_case
 from ..verify_v2 import verify_case_v2
+from ..verify_v21 import verify_case_v21
 from .evaluator import discover_cases
 
 
@@ -25,6 +26,21 @@ class AdvancedCaseEvaluation:
     error: str | None = None
 
 
+def _normalize_iteration(iteration: str | int | float) -> str:
+    value = str(iteration)
+    if value in {"1", "1.0"}:
+        return "1"
+    if value in {"2", "2.0"}:
+        return "2"
+    if value == "2.1":
+        return "2.1"
+    raise ValueError("advanced iteration must be 1, 2, or 2.1")
+
+
+def _iteration_slug(iteration: str) -> str:
+    return iteration.replace(".", "_")
+
+
 def evaluate_advanced(
     benchmark_root: str | Path,
     llm: LLM,
@@ -33,13 +49,12 @@ def evaluate_advanced(
     provider_name: str = "unknown",
     model_name: str = "unknown",
     timeout_seconds: float = 20.0,
-    iteration: int = 2,
+    iteration: str | int | float = "2.1",
     max_reproduction_attempts: int = 3,
     max_provider_attempts: int = 1,
     progress: bool = False,
 ) -> dict:
-    if iteration not in (1, 2):
-        raise ValueError("advanced iteration must be 1 or 2")
+    iteration_name = _normalize_iteration(iteration)
 
     case_dirs = discover_cases(benchmark_root)
     results: list[AdvancedCaseEvaluation] = []
@@ -52,15 +67,24 @@ def evaluate_advanced(
         started = time.perf_counter()
 
         try:
-            if iteration == 1:
+            if iteration_name == "1":
                 result = verify_case(
                     case,
                     llm,
                     artifacts_root=artifacts_root,
                     timeout_seconds=timeout_seconds,
                 )
-            else:
+            elif iteration_name == "2":
                 result = verify_case_v2(
+                    case,
+                    llm,
+                    artifacts_root=artifacts_root,
+                    timeout_seconds=timeout_seconds,
+                    max_reproduction_attempts=max_reproduction_attempts,
+                    max_provider_attempts=max_provider_attempts,
+                )
+            else:
+                result = verify_case_v21(
                     case,
                     llm,
                     artifacts_root=artifacts_root,
@@ -100,15 +124,15 @@ def evaluate_advanced(
                 print(f"         ERROR after {duration:.2f}s: {exc}", flush=True)
 
         results.append(item)
-        _write_checkpoint(results, Path(artifacts_root), iteration)
+        _write_checkpoint(results, Path(artifacts_root), iteration_name)
 
-    summary = _summarize(results, provider_name, model_name, iteration)
-    _write_reports(summary, results, Path(artifacts_root), iteration)
+    summary = _summarize(results, provider_name, model_name, iteration_name)
+    _write_reports(summary, results, Path(artifacts_root), iteration_name)
     return summary
 
 
 def _summarize(
-    results: list[AdvancedCaseEvaluation], provider: str, model: str, iteration: int
+    results: list[AdvancedCaseEvaluation], provider: str, model: str, iteration: str
 ) -> dict:
     total = len(results)
     correct = sum(item.correct for item in results)
@@ -125,21 +149,24 @@ def _summarize(
         expected.value: {predicted.value: 0 for predicted in Verdict}
         for expected in Verdict
     }
+    valid_verdicts = {verdict.value for verdict in Verdict}
     for item in results:
-        if item.error is None and item.predicted in {verdict.value for verdict in Verdict}:
+        if item.error is None and item.predicted in valid_verdicts:
             confusion[item.expected][item.predicted] += 1
 
+    generated = iteration in {"2", "2.1"}
     capabilities = {
         "investigator": True,
         "existing_test_execution": True,
-        "generated_reproduction": iteration >= 2,
-        "bounded_reproduction_retry": iteration >= 2,
-        "deterministic_verdict_gate": iteration >= 2,
+        "generated_reproduction": generated,
+        "bounded_reproduction_retry": generated,
+        "deterministic_verdict_gate": generated,
+        "discriminating_reproduction_semantics": iteration == "2.1",
         "challenger": False,
     }
 
     return {
-        "mode": f"advanced_iteration_{iteration}",
+        "mode": f"advanced_iteration_{_iteration_slug(iteration)}",
         "iteration": iteration,
         "provider": provider,
         "model": model,
@@ -150,14 +177,20 @@ def _summarize(
         "correct": correct,
         "verdict_accuracy": correct / total if total else 0.0,
         "false_acceptance_rate": false_accepts / len(non_complete) if non_complete else 0.0,
-        "average_runtime_seconds": sum(item.runtime_seconds for item in results) / total if total else 0.0,
+        "average_runtime_seconds": (
+            sum(item.runtime_seconds for item in results) / total if total else 0.0
+        ),
         "confusion_matrix": confusion,
         "capabilities": capabilities,
     }
 
 
-def _root(artifacts_root: Path, iteration: int) -> Path:
-    root = artifacts_root.resolve() / "eval" / f"advanced_iteration_{iteration}"
+def _root(artifacts_root: Path, iteration: str) -> Path:
+    root = (
+        artifacts_root.resolve()
+        / "eval"
+        / f"advanced_iteration_{_iteration_slug(iteration)}"
+    )
     root.mkdir(parents=True, exist_ok=True)
     return root
 
@@ -165,7 +198,7 @@ def _root(artifacts_root: Path, iteration: int) -> Path:
 def _write_checkpoint(
     results: list[AdvancedCaseEvaluation],
     artifacts_root: Path,
-    iteration: int,
+    iteration: str,
 ) -> None:
     root = _root(artifacts_root, iteration)
     with (root / "cases.partial.jsonl").open("w", encoding="utf-8") as handle:
@@ -177,7 +210,7 @@ def _write_reports(
     summary: dict,
     results: list[AdvancedCaseEvaluation],
     artifacts_root: Path,
-    iteration: int,
+    iteration: str,
 ) -> None:
     root = _root(artifacts_root, iteration)
     (root / "summary.json").write_text(
@@ -187,11 +220,22 @@ def _write_reports(
         for item in results:
             handle.write(json.dumps(asdict(item), sort_keys=True) + "\n")
 
-    capability_text = (
-        "Investigator + existing-test execution + generated reproduction with bounded retry + deterministic verdict gate. No Challenger cases."
-        if iteration == 2
-        else "Investigator + existing-test execution + evidence-constrained verifier. No generated reproduction or Challenger."
-    )
+    if iteration == "2.1":
+        capability_text = (
+            "Investigator + existing-test execution + generated reproduction with bounded retry + "
+            "discriminating reproduction semantics + deterministic verdict gate. No Challenger cases."
+        )
+    elif iteration == "2":
+        capability_text = (
+            "Investigator + existing-test execution + generated reproduction with bounded retry + "
+            "deterministic verdict gate. No Challenger cases."
+        )
+    else:
+        capability_text = (
+            "Investigator + existing-test execution + evidence-constrained verifier. "
+            "No generated reproduction or Challenger."
+        )
+
     lines = [
         f"# Advanced Iteration {iteration} Evaluation",
         "",
