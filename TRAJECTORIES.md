@@ -76,19 +76,37 @@ Normalized trace: `traces/trace-006-iteration-2-1/`.
 
 Human instruction: `go ahead with 2.2`.
 
-Iteration 2.2 assigns explicit confidence semantics to generated evidence:
+Iteration 2.2 assigned explicit confidence semantics to generated evidence and added a deterministic weighted-verdict gate plus a stagnation stop.
 
-- **discriminating** = original FAIL + patch PASS, high-confidence evidence;
-- **non_discriminating** = original FAIL + patch FAIL/timeout, diagnostic-only evidence;
-- **not_reproduced** = original PASS/timeout, no negative evidence against the patch.
+The human then ran a clean ten-case benchmark with `qwen3:0.6b`:
+- verdict accuracy: 30.0%
+- false acceptance rate: 0.0%
+- average runtime: 50.863s/case
 
-A deterministic weighted-verdict gate prevents diagnostic-only or not-reproduced generated tests from justifying `partial_fix`, `ineffective_fix`, or `regression_introduced` when the patched deterministic suite passes and no high-confidence reproduction exists. The raw model proposal remains preserved in evidence.
+The targeted single-case behavior improved: diagnostic-only reproduction no longer justified an unsupported negative verdict. However, aggregate accuracy fell from 40.0% to 30.0%, and runtime barely improved from 52.584s to 50.863s. The main new conclusion was that the workflow still relied too heavily on the small semantic model even when the existing pytest suite already contained useful before/after failure structure.
 
-Iteration 2.2 also adds an early stagnation stop after two consecutive non-discriminating attempts, reducing wasted Reproducer calls when the local model is clearly not converging. Iterations 1, 2, and 2.1 remain available unchanged for ablation comparison, and 2.2 writes to its own evaluation directory.
-
-Local verification is pending and is recorded in `traces/trace-007-iteration-2-2/verification.txt`.
+Decision: preserve 2.2 as measured evidence and move deterministic test-delta analysis before reproduction.
 
 Normalized trace: `traces/trace-007-iteration-2-2/`.
+
+---
+
+## trajectory-008 — Advanced Iteration 2.3: deterministic test-delta engine
+
+Human instruction: `here you go I guess it needs fixing if it does go ahead`.
+
+Iteration 2.3 changes the order of operations. After the Investigator, the original and patched suites run first. `refute` mechanically parses pytest failure identifiers and computes fixed, remaining, and newly failing test sets.
+
+Observed test deltas can now resolve some verdicts without another semantic model call:
+- newly failing tests -> `regression_introduced`;
+- fixed failures with remaining failures -> `partial_fix`;
+- unchanged named failures -> `ineffective_fix`.
+
+If the visible suite is fully repaired or otherwise ambiguous, generated reproduction remains available as a falsification step and the semantic verifier may still be called. Reproduction is capped at two attempts in this iteration. Earlier iterations remain unchanged for comparison.
+
+Local verification is pending and is recorded in `traces/trace-008-iteration-2-3/verification.txt`.
+
+Normalized trace: `traces/trace-008-iteration-2-3/`.
 
 ---
 
