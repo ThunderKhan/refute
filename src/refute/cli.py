@@ -87,6 +87,12 @@ def build_parser() -> argparse.ArgumentParser:
         default=2,
         help="Advanced verification iteration to evaluate. Defaults to 2.",
     )
+    advanced_parser.add_argument(
+        "--max-reproduction-attempts",
+        type=int,
+        default=3,
+        help="Maximum generated reproduction attempts per case for Iteration 2.",
+    )
 
     return parser
 
@@ -99,6 +105,20 @@ def _add_provider_args(parser: argparse.ArgumentParser) -> None:
         help="Language-model provider. Defaults to local Ollama.",
     )
     parser.add_argument("--model", help="Model name. May also be supplied with REFUTE_MODEL.")
+    parser.add_argument(
+        "--llm-timeout",
+        type=float,
+        default=30.0,
+        help="Per language-model request timeout in seconds. Defaults to 30.",
+    )
+
+
+def _provider(args):
+    return provider_from_env(
+        args.provider,
+        args.model,
+        timeout_seconds=args.llm_timeout,
+    )
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -125,7 +145,7 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "baseline":
         try:
             case = load_case(args.case_dir)
-            llm = provider_from_env(args.provider, args.model)
+            llm = _provider(args)
             result = run_baseline(case, llm, args.artifacts)
         except (CaseFormatError, LLMError, ValueError) as exc:
             parser.error(str(exc))
@@ -142,7 +162,7 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.command == "eval-baseline":
         try:
-            llm = provider_from_env(args.provider, args.model)
+            llm = _provider(args)
             summary = evaluate_baseline(
                 args.benchmark_dir,
                 llm,
@@ -169,7 +189,7 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "verify":
         try:
             case = load_case(args.case_dir)
-            llm = provider_from_env(args.provider, args.model)
+            llm = _provider(args)
             if args.iteration == 1:
                 result = verify_case(
                     case,
@@ -211,7 +231,7 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.command == "eval-advanced":
         try:
-            llm = provider_from_env(args.provider, args.model)
+            llm = _provider(args)
             summary = evaluate_advanced(
                 args.benchmark_dir,
                 llm,
@@ -220,21 +240,30 @@ def main(argv: list[str] | None = None) -> int:
                 model_name=getattr(llm, "model", args.model or "unknown"),
                 timeout_seconds=args.timeout,
                 iteration=args.iteration,
+                max_reproduction_attempts=args.max_reproduction_attempts,
+                max_provider_attempts=1,
+                progress=True,
             )
         except (CaseFormatError, LLMError, ValueError) as exc:
             parser.error(str(exc))
+        print()
         print(f"mode: advanced iteration {args.iteration} benchmark")
         print(f"model: {summary['model']}")
         print(f"cases: {summary['cases']}")
+        print(f"completed cases: {summary['completed_cases']}")
+        print(f"errors: {summary['errors']}")
         print(f"verdict accuracy: {summary['verdict_accuracy']:.1%}")
         print(f"false acceptance rate: {summary['false_acceptance_rate']:.1%}")
         print(f"average runtime: {summary['average_runtime_seconds']:.3f}s")
+        if not summary["evaluation_complete"]:
+            print("warning: evaluation contains provider/validation errors; inspect the report before comparing metrics")
         print()
         root = args.artifacts.resolve() / "eval" / f"advanced_iteration_{args.iteration}"
         print("aggregate evidence:")
         print(f"  {root / 'summary.json'}")
         print(f"  {root / 'cases.jsonl'}")
         print(f"  {root / 'report.md'}")
+        print(f"  {root / 'cases.partial.jsonl'}")
         return 0
 
     parser.error(f"unknown command: {args.command}")
