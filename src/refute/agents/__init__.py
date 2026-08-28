@@ -1,5 +1,7 @@
 from enum import Enum
 
+from .investigator import Investigation, investigate
+
 
 class AgentRole(str, Enum):
     INVESTIGATOR = "investigator"
@@ -8,4 +10,4 @@ class AgentRole(str, Enum):
     VERIFIER = "verifier"
 
 
-__all__ = ["AgentRole"]
+__all__ = ["AgentRole", "Investigation", "investigate"]
