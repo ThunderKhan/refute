@@ -1,0 +1,17 @@
+Human baseline evaluation (Windows PowerShell)
+
+refute eval-baseline benchmark --provider ollama --model qwen3:0.6b
+
+mode: static baseline benchmark
+model: qwen3:0.6b
+cases: 10
+verdict accuracy: 10.0%
+false acceptance rate: 57.1%
+average runtime: 2.405s
+
+Aggregate evidence written to:
+- artifacts\eval\baseline\summary.json
+- artifacts\eval\baseline\cases.jsonl
+- artifacts\eval\baseline\report.md
+
+This run is treated as frozen Baseline v1 for later comparisons.
