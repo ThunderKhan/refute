@@ -11,6 +11,7 @@ from ..models import Verdict
 from ..verify import verify_case
 from ..verify_v2 import verify_case_v2
 from ..verify_v21 import verify_case_v21
+from ..verify_v22 import verify_case_v22
 from .evaluator import discover_cases
 
 
@@ -32,9 +33,9 @@ def _normalize_iteration(iteration: str | int | float) -> str:
         return "1"
     if value in {"2", "2.0"}:
         return "2"
-    if value == "2.1":
-        return "2.1"
-    raise ValueError("advanced iteration must be 1, 2, or 2.1")
+    if value in {"2.1", "2.2"}:
+        return value
+    raise ValueError("advanced iteration must be 1, 2, 2.1, or 2.2")
 
 
 def _iteration_slug(iteration: str) -> str:
@@ -49,7 +50,7 @@ def evaluate_advanced(
     provider_name: str = "unknown",
     model_name: str = "unknown",
     timeout_seconds: float = 20.0,
-    iteration: str | int | float = "2.1",
+    iteration: str | int | float = "2.2",
     max_reproduction_attempts: int = 3,
     max_provider_attempts: int = 1,
     progress: bool = False,
@@ -83,8 +84,17 @@ def evaluate_advanced(
                     max_reproduction_attempts=max_reproduction_attempts,
                     max_provider_attempts=max_provider_attempts,
                 )
-            else:
+            elif iteration_name == "2.1":
                 result = verify_case_v21(
+                    case,
+                    llm,
+                    artifacts_root=artifacts_root,
+                    timeout_seconds=timeout_seconds,
+                    max_reproduction_attempts=max_reproduction_attempts,
+                    max_provider_attempts=max_provider_attempts,
+                )
+            else:
+                result = verify_case_v22(
                     case,
                     llm,
                     artifacts_root=artifacts_root,
@@ -104,10 +114,7 @@ def evaluate_advanced(
             )
             if progress:
                 marker = "correct" if item.correct else "wrong"
-                print(
-                    f"         {item.predicted} ({marker}, {duration:.2f}s)",
-                    flush=True,
-                )
+                print(f"         {item.predicted} ({marker}, {duration:.2f}s)", flush=True)
         except (LLMError, ValueError) as exc:
             duration = time.perf_counter() - started
             item = AdvancedCaseEvaluation(
@@ -154,14 +161,16 @@ def _summarize(
         if item.error is None and item.predicted in valid_verdicts:
             confusion[item.expected][item.predicted] += 1
 
-    generated = iteration in {"2", "2.1"}
+    generated = iteration in {"2", "2.1", "2.2"}
     capabilities = {
         "investigator": True,
         "existing_test_execution": True,
         "generated_reproduction": generated,
         "bounded_reproduction_retry": generated,
         "deterministic_verdict_gate": generated,
-        "discriminating_reproduction_semantics": iteration == "2.1",
+        "discriminating_reproduction_semantics": iteration in {"2.1", "2.2"},
+        "evidence_weighting": iteration == "2.2",
+        "stagnation_stop": iteration == "2.2",
         "challenger": False,
     }
 
@@ -186,11 +195,7 @@ def _summarize(
 
 
 def _root(artifacts_root: Path, iteration: str) -> Path:
-    root = (
-        artifacts_root.resolve()
-        / "eval"
-        / f"advanced_iteration_{_iteration_slug(iteration)}"
-    )
+    root = artifacts_root.resolve() / "eval" / f"advanced_iteration_{_iteration_slug(iteration)}"
     root.mkdir(parents=True, exist_ok=True)
     return root
 
@@ -213,14 +218,18 @@ def _write_reports(
     iteration: str,
 ) -> None:
     root = _root(artifacts_root, iteration)
-    (root / "summary.json").write_text(
-        json.dumps(summary, indent=2) + "\n", encoding="utf-8"
-    )
+    (root / "summary.json").write_text(json.dumps(summary, indent=2) + "\n", encoding="utf-8")
     with (root / "cases.jsonl").open("w", encoding="utf-8") as handle:
         for item in results:
             handle.write(json.dumps(asdict(item), sort_keys=True) + "\n")
 
-    if iteration == "2.1":
+    if iteration == "2.2":
+        capability_text = (
+            "Investigator + existing-test execution + generated reproduction with bounded retry + "
+            "discriminating semantics + confidence weighting + stagnation stop + deterministic verdict gate. "
+            "No Challenger cases."
+        )
+    elif iteration == "2.1":
         capability_text = (
             "Investigator + existing-test execution + generated reproduction with bounded retry + "
             "discriminating reproduction semantics + deterministic verdict gate. No Challenger cases."
