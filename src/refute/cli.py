@@ -13,6 +13,7 @@ from .verify import verify_case
 from .verify_v2 import verify_case_v2
 from .verify_v21 import verify_case_v21
 from .verify_v22 import verify_case_v22
+from .verify_v23 import verify_case_v23
 
 
 def _status(result) -> str:
@@ -58,7 +59,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     verify_parser = subparsers.add_parser(
         "verify",
-        help="Run an advanced verification iteration. Defaults to Iteration 2.2.",
+        help="Run an advanced verification iteration. Defaults to Iteration 2.3.",
     )
     verify_parser.add_argument("case_dir", type=Path)
     _add_provider_args(verify_parser)
@@ -66,9 +67,9 @@ def build_parser() -> argparse.ArgumentParser:
     verify_parser.add_argument("--timeout", type=float, default=20.0)
     verify_parser.add_argument(
         "--iteration",
-        choices=("1", "2", "2.1", "2.2"),
-        default="2.2",
-        help="Advanced verification iteration to run. Defaults to 2.2.",
+        choices=("1", "2", "2.1", "2.2", "2.3"),
+        default="2.3",
+        help="Advanced verification iteration to run. Defaults to 2.3.",
     )
     verify_parser.add_argument(
         "--max-reproduction-attempts",
@@ -87,9 +88,9 @@ def build_parser() -> argparse.ArgumentParser:
     advanced_parser.add_argument("--timeout", type=float, default=20.0)
     advanced_parser.add_argument(
         "--iteration",
-        choices=("1", "2", "2.1", "2.2"),
-        default="2.2",
-        help="Advanced verification iteration to evaluate. Defaults to 2.2.",
+        choices=("1", "2", "2.1", "2.2", "2.3"),
+        default="2.3",
+        help="Advanced verification iteration to evaluate. Defaults to 2.3.",
     )
     advanced_parser.add_argument(
         "--max-reproduction-attempts",
@@ -195,35 +196,26 @@ def main(argv: list[str] | None = None) -> int:
             case = load_case(args.case_dir)
             llm = _provider(args)
             if args.iteration == "1":
-                result = verify_case(
-                    case,
-                    llm,
-                    artifacts_root=args.artifacts,
-                    timeout_seconds=args.timeout,
-                )
+                result = verify_case(case, llm, artifacts_root=args.artifacts, timeout_seconds=args.timeout)
             elif args.iteration == "2":
                 result = verify_case_v2(
-                    case,
-                    llm,
-                    artifacts_root=args.artifacts,
-                    timeout_seconds=args.timeout,
+                    case, llm, artifacts_root=args.artifacts, timeout_seconds=args.timeout,
                     max_reproduction_attempts=args.max_reproduction_attempts,
                 )
             elif args.iteration == "2.1":
                 result = verify_case_v21(
-                    case,
-                    llm,
-                    artifacts_root=args.artifacts,
-                    timeout_seconds=args.timeout,
+                    case, llm, artifacts_root=args.artifacts, timeout_seconds=args.timeout,
+                    max_reproduction_attempts=args.max_reproduction_attempts,
+                )
+            elif args.iteration == "2.2":
+                result = verify_case_v22(
+                    case, llm, artifacts_root=args.artifacts, timeout_seconds=args.timeout,
                     max_reproduction_attempts=args.max_reproduction_attempts,
                 )
             else:
-                result = verify_case_v22(
-                    case,
-                    llm,
-                    artifacts_root=args.artifacts,
-                    timeout_seconds=args.timeout,
-                    max_reproduction_attempts=args.max_reproduction_attempts,
+                result = verify_case_v23(
+                    case, llm, artifacts_root=args.artifacts, timeout_seconds=args.timeout,
+                    max_reproduction_attempts=min(args.max_reproduction_attempts, 2),
                 )
         except (CaseFormatError, LLMError, ValueError) as exc:
             parser.error(str(exc))
@@ -233,57 +225,47 @@ def main(argv: list[str] | None = None) -> int:
         print(f"run: {result.run_id}")
         print(f"original tests: {_status(result.original)}")
         print(f"patched tests:  {_status(result.patched)}")
+
         if args.iteration == "2":
             print(f"reproduction attempts: {len(result.reproduction_attempts)}")
-            print(
-                "reported bug reproduced: "
-                + ("yes" if result.successful_reproduction is not None else "no")
-            )
+            print("reported bug reproduced: " + ("yes" if result.successful_reproduction is not None else "no"))
             if result.successful_reproduction is not None:
-                print(
-                    "reproduction passes on patch: "
-                    + ("yes" if result.successful_reproduction.fixed_by_patch else "no")
-                )
+                print("reproduction passes on patch: " + ("yes" if result.successful_reproduction.fixed_by_patch else "no"))
         elif args.iteration == "2.1":
             print(f"reproduction attempts: {len(result.reproduction_attempts)}")
-            print(
-                "discriminating reproduction found: "
-                + ("yes" if result.discriminating_reproduction is not None else "no")
-            )
+            print("discriminating reproduction found: " + ("yes" if result.discriminating_reproduction is not None else "no"))
             if result.reproduction_attempts:
                 last = result.reproduction_attempts[-1]
                 print(
                     "last reproduction outcome: "
-                    + (
-                        "original FAIL / patch PASS"
-                        if last.discriminating
-                        else (
-                            "original FAIL / patch FAIL-or-timeout"
-                            if last.original_failed
-                            else "original PASS-or-timeout"
-                        )
-                    )
+                    + ("original FAIL / patch PASS" if last.discriminating else (
+                        "original FAIL / patch FAIL-or-timeout" if last.original_failed else "original PASS-or-timeout"
+                    ))
                 )
         elif args.iteration == "2.2":
             print(f"reproduction attempts: {len(result.reproduction_attempts)}")
-            print(
-                "discriminating reproduction found: "
-                + ("yes" if result.discriminating_reproduction is not None else "no")
-            )
+            print("discriminating reproduction found: " + ("yes" if result.discriminating_reproduction is not None else "no"))
             counts = {
                 name: sum(item.classification == name for item in result.reproduction_attempts)
                 for name in ("discriminating", "non_discriminating", "not_reproduced")
             }
             print(
                 "reproduction evidence: "
-                f"high={counts['discriminating']} "
-                f"diagnostic={counts['non_discriminating']} "
-                f"none={counts['not_reproduced']}"
+                f"high={counts['discriminating']} diagnostic={counts['non_discriminating']} none={counts['not_reproduced']}"
             )
+            print("stopped early for stagnation: " + ("yes" if result.stopped_for_stagnation else "no"))
+        elif args.iteration == "2.3":
+            print(f"test delta: {result.test_delta.classification}")
             print(
-                "stopped early for stagnation: "
-                + ("yes" if result.stopped_for_stagnation else "no")
+                "observed failures: "
+                f"fixed={len(result.test_delta.fixed_tests)} "
+                f"remaining={len(result.test_delta.remaining_failures)} "
+                f"new={len(result.test_delta.new_failures)}"
             )
+            print(f"reproduction attempts: {len(result.reproduction_attempts)}")
+            print("discriminating reproduction found: " + ("yes" if result.discriminating_reproduction is not None else "no"))
+            print("semantic verifier called: " + ("yes" if result.verifier_called else "no"))
+
         print(f"verdict: {result.verdict.value}")
         print(f"reason: {result.reason}")
         print(f"evidence: {result.run_root}")
@@ -316,16 +298,9 @@ def main(argv: list[str] | None = None) -> int:
         print(f"false acceptance rate: {summary['false_acceptance_rate']:.1%}")
         print(f"average runtime: {summary['average_runtime_seconds']:.3f}s")
         if not summary["evaluation_complete"]:
-            print(
-                "warning: evaluation contains provider/validation errors; "
-                "inspect the report before comparing metrics"
-            )
+            print("warning: evaluation contains provider/validation errors; inspect the report before comparing metrics")
         print()
-        root = (
-            args.artifacts.resolve()
-            / "eval"
-            / f"advanced_iteration_{_iteration_slug(args.iteration)}"
-        )
+        root = args.artifacts.resolve() / "eval" / f"advanced_iteration_{_iteration_slug(args.iteration)}"
         print("aggregate evidence:")
         print(f"  {root / 'summary.json'}")
         print(f"  {root / 'cases.jsonl'}")
