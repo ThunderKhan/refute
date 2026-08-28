@@ -1,0 +1,14 @@
+Human local verification (Windows PowerShell)
+
+python -m pytest
+........ [100%]
+8 passed in 3.90s
+
+refute inspect benchmark\case_001
+case: case_001
+expected verdict: complete_fix
+
+original: FAIL (exit 1)
+patched:  PASS
+
+Execution evidence persisted under artifacts\case_001\.
