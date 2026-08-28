@@ -12,6 +12,7 @@ from ..verify import verify_case
 from ..verify_v2 import verify_case_v2
 from ..verify_v21 import verify_case_v21
 from ..verify_v22 import verify_case_v22
+from ..verify_v23 import verify_case_v23
 from .evaluator import discover_cases
 
 
@@ -33,9 +34,9 @@ def _normalize_iteration(iteration: str | int | float) -> str:
         return "1"
     if value in {"2", "2.0"}:
         return "2"
-    if value in {"2.1", "2.2"}:
+    if value in {"2.1", "2.2", "2.3"}:
         return value
-    raise ValueError("advanced iteration must be 1, 2, 2.1, or 2.2")
+    raise ValueError("advanced iteration must be 1, 2, 2.1, 2.2, or 2.3")
 
 
 def _iteration_slug(iteration: str) -> str:
@@ -50,7 +51,7 @@ def evaluate_advanced(
     provider_name: str = "unknown",
     model_name: str = "unknown",
     timeout_seconds: float = 20.0,
-    iteration: str | int | float = "2.2",
+    iteration: str | int | float = "2.3",
     max_reproduction_attempts: int = 3,
     max_provider_attempts: int = 1,
     progress: bool = False,
@@ -93,13 +94,22 @@ def evaluate_advanced(
                     max_reproduction_attempts=max_reproduction_attempts,
                     max_provider_attempts=max_provider_attempts,
                 )
-            else:
+            elif iteration_name == "2.2":
                 result = verify_case_v22(
                     case,
                     llm,
                     artifacts_root=artifacts_root,
                     timeout_seconds=timeout_seconds,
                     max_reproduction_attempts=max_reproduction_attempts,
+                    max_provider_attempts=max_provider_attempts,
+                )
+            else:
+                result = verify_case_v23(
+                    case,
+                    llm,
+                    artifacts_root=artifacts_root,
+                    timeout_seconds=timeout_seconds,
+                    max_reproduction_attempts=min(max_reproduction_attempts, 2),
                     max_provider_attempts=max_provider_attempts,
                 )
             duration = time.perf_counter() - started
@@ -161,16 +171,18 @@ def _summarize(
         if item.error is None and item.predicted in valid_verdicts:
             confusion[item.expected][item.predicted] += 1
 
-    generated = iteration in {"2", "2.1", "2.2"}
+    generated = iteration in {"2", "2.1", "2.2", "2.3"}
     capabilities = {
         "investigator": True,
         "existing_test_execution": True,
         "generated_reproduction": generated,
         "bounded_reproduction_retry": generated,
         "deterministic_verdict_gate": generated,
-        "discriminating_reproduction_semantics": iteration in {"2.1", "2.2"},
-        "evidence_weighting": iteration == "2.2",
+        "discriminating_reproduction_semantics": iteration in {"2.1", "2.2", "2.3"},
+        "evidence_weighting": iteration in {"2.2", "2.3"},
         "stagnation_stop": iteration == "2.2",
+        "test_delta_engine": iteration == "2.3",
+        "conditional_reproduction": iteration == "2.3",
         "challenger": False,
     }
 
@@ -223,7 +235,13 @@ def _write_reports(
         for item in results:
             handle.write(json.dumps(asdict(item), sort_keys=True) + "\n")
 
-    if iteration == "2.2":
+    if iteration == "2.3":
+        capability_text = (
+            "Investigator + deterministic pytest failure-set delta analysis + conditional generated reproduction + "
+            "discriminating semantics. Deterministic observed deltas can resolve partial/ineffective/regression cases "
+            "without an extra verifier call. No Challenger cases."
+        )
+    elif iteration == "2.2":
         capability_text = (
             "Investigator + existing-test execution + generated reproduction with bounded retry + "
             "discriminating semantics + confidence weighting + stagnation stop + deterministic verdict gate. "
