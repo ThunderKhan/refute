@@ -1,0 +1,28 @@
+Verification status: PENDING LOCAL RUN
+
+Required local checks:
+1. git pull
+2. python -m pytest
+3. refute verify benchmark\case_001 --provider ollama --model qwen3:0.6b --iteration 2.2 --llm-timeout 30
+4. refute eval-advanced benchmark --provider ollama --model qwen3:0.6b --iteration 2.2 --llm-timeout 30
+
+Expected single-case signals:
+- mode: advanced iteration 2.2
+- reproduction evidence counts split into high / diagnostic / none
+- non-discriminating generated tests must not be treated as proof that the patch is partial, ineffective, or regressing when the patched deterministic suite passes
+- repeated non-discriminating attempts may trigger `stopped early for stagnation: yes`
+- only original FAIL + patch PASS counts as high-confidence generated evidence
+
+Separate aggregate artifacts:
+- artifacts/eval/advanced_iteration_2_2/summary.json
+- artifacts/eval/advanced_iteration_2_2/cases.jsonl
+- artifacts/eval/advanced_iteration_2_2/report.md
+- artifacts/eval/advanced_iteration_2_2/cases.partial.jsonl
+
+Frozen comparison points:
+- Baseline v1: 10.0% accuracy, 57.1% false acceptance, 2.405s average runtime
+- Advanced Iteration 1: 40.0% accuracy, 28.6% false acceptance, 5.641s average runtime
+- Advanced Iteration 2: 10.0% accuracy, 0.0% false acceptance, 36.569s average runtime
+- Advanced Iteration 2.1: 40.0% accuracy, 0.0% false acceptance, 52.584s average runtime
+
+Do not mark Iteration 2.2 complete until local outputs are supplied by the human.
