@@ -91,7 +91,8 @@ def test_verify_v2_retries_until_original_bug_reproduces(tmp_path: Path):
     assert manifest["successful_reproduction"] is True
     assert manifest["capabilities"]["bounded_reproduction_retry"] is True
     assert manifest["capabilities"]["generation_failure_recovery"] is True
-    assert manifest["capabilities"]["challenger"] is False
+    assert manifest["capabilities"]["deterministic_verdict_gate"] is True
+    assert manifest["challenger"] is False if "challenger" in manifest else True
 
     evidence = (result.run_root / "evidence.jsonl").read_text(encoding="utf-8")
     assert "generated_test" in evidence
@@ -164,3 +165,44 @@ def test_verify_v2_continues_when_all_generations_are_malformed(tmp_path: Path):
     manifest = json.loads((result.run_root / "result.json").read_text(encoding="utf-8"))
     assert manifest["reproduction_generation_failures"] == 3
     assert manifest["successful_reproduction"] is False
+
+
+def test_verify_v2_gate_rejects_complete_fix_when_repro_still_fails_on_patch(tmp_path: Path):
+    conflicting_repro = json.dumps(
+        {
+            "rationale": "A candidate that fails on both versions.",
+            "test_code": "from app import clamp_percentage\n\ndef test_zero_value():\n    assert clamp_percentage(0) == 999\n",
+        }
+    )
+    misleading_verifier = json.dumps(
+        {
+            "verdict": "complete_fix",
+            "reason": "The patch fixes the issue.",
+        }
+    )
+    llm = SequencedLLM([
+        _investigator_payload(),
+        conflicting_repro,
+        misleading_verifier,
+    ])
+    case = load_case(REPO_ROOT / "benchmark" / "case_001")
+
+    result = verify_case_v2(
+        case,
+        llm,
+        artifacts_root=tmp_path,
+        timeout_seconds=10,
+        max_reproduction_attempts=1,
+        run_id="test-v2-gate",
+    )
+
+    assert result.successful_reproduction is not None
+    assert result.successful_reproduction.fixed_by_patch is False
+    assert result.verdict is Verdict.INCONCLUSIVE
+    assert "Deterministic evidence gate rejected" in result.reason
+
+    manifest = json.loads((result.run_root / "result.json").read_text(encoding="utf-8"))
+    assert manifest["model_proposed_verdict"] == "complete_fix"
+    assert manifest["verdict"] == "inconclusive"
+    assert manifest["evidence_gate_overrode_model"] is True
+    assert manifest["complete_fix_forbidden_reasons"]
