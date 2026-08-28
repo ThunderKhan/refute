@@ -56,14 +56,35 @@ Decision: keep discriminating reproduction semantics, but downgrade non-discrimi
 
 Hypothesis: explicitly weighting generated evidence and preventing diagnostic-only failures from driving negative verdicts will preserve safety while improving grounding; stopping after repeated non-discriminating attempts should reduce wasted runtime.
 
+Result:
+- verdict accuracy: **30.0%**
+- false acceptance rate: **0.0%**
+- average runtime: **50.863s/case**
+
+Observed behavior:
+- the single-case `case_001` run correctly stopped treating a non-discriminating reproduction as proof of patch failure and returned `inconclusive`;
+- safety remained strong at 0.0% false acceptance;
+- aggregate accuracy fell from Iteration 2.1's 40.0% to 30.0%;
+- runtime barely improved, showing that retry suppression alone did not address the main latency source;
+- the workflow remained overly dependent on a small-model semantic verdict even when the existing pytest suite already contained mechanically useful before/after failure information.
+
+Decision: preserve 2.2 as another measured negative/neutral experiment. Move deterministic suite analysis earlier and extract test-level failure deltas before deciding whether generated reproduction or another verifier call is necessary.
+
+## Advanced Iteration 2.3 — deterministic test-delta engine + conditional reproduction
+
+Hypothesis: mechanically comparing pytest failure identifiers between original and patched suites will resolve observed partial/ineffective/regression outcomes more accurately and cheaply, while reserving generated reproduction for cases where the visible suite is repaired or ambiguous.
+
 Changes:
-- `discriminating` reproduction: high-confidence evidence;
-- `non_discriminating`: diagnostic-only, cannot by itself establish patch failure;
-- `not_reproduced`: no negative evidence against the patch;
-- deterministic weighted-verdict gate;
-- early stop after two consecutive non-discriminating attempts;
-- separate `advanced_iteration_2_2` evaluation artifacts.
+- deterministic existing tests now run before generated reproduction;
+- pytest failure identifiers are parsed into fixed, remaining, and newly failing test sets;
+- new failures deterministically indicate `regression_introduced`;
+- some fixed failures with remaining failures deterministically indicate `partial_fix`;
+- unchanged named failures deterministically indicate `ineffective_fix`;
+- observed original-fail / patch-pass remains semantically open and may use generated reproduction plus the semantic verifier;
+- deterministic outcomes skip unnecessary Reproducer and final Verifier model calls;
+- generated reproduction is capped at two attempts for Iteration 2.3;
+- separate `advanced_iteration_2_3` artifacts preserve comparability with earlier iterations.
 
-Result: **pending local benchmark run**.
+Result: **pending local verification and benchmark run**.
 
-Decision: pending measured evidence. Challenger remains intentionally deferred until this evidence layer is stable.
+Decision: Challenger remains deferred until the deterministic evidence layer is measured.
