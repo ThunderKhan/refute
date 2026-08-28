@@ -1,0 +1,12 @@
+{
+  "trace_id": "trace-004-advanced-iteration-1",
+  "project": "refute",
+  "objective": "Implement the first advanced verification path using a structured Investigator, deterministic execution, evidence provenance, and an evidence-constrained verdict.",
+  "status": "implementation_complete_local_verification_pending",
+  "model_for_project_runtime": "qwen3:0.6b via Ollama",
+  "coding_agent": "ChatGPT coding agent with GitHub tool access",
+  "privacy": {
+    "credentials_included": false,
+    "private_repository_content_included": false
+  }
+}
