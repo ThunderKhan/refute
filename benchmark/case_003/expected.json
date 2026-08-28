@@ -1,0 +1,6 @@
+{
+  "case_id": "case_003",
+  "expected_verdict": "regression_introduced",
+  "test_command": ["python", "-m", "pytest", "-q"],
+  "notes": "The patch fixes surrounding whitespace but incorrectly removes meaningful internal spaces."
+}
