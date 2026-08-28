@@ -7,7 +7,11 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from .agents.investigator import Investigation, investigate
-from .agents.reproducer import ReproductionCandidate, generate_reproduction
+from .agents.reproducer import (
+    ReproductionCandidate,
+    ReproductionGenerationError,
+    generate_reproduction,
+)
 from .evidence import EvidenceKind, EvidenceStore
 from .executor import run_command
 from .llm import LLM
@@ -18,6 +22,7 @@ VERIFIER_SYSTEM_PROMPT = """You are the evidence-constrained verifier in a softw
 Use only the supplied Investigator hypothesis, existing-test evidence, and generated reproduction evidence.
 Do not invent execution facts and do not override explicit tool results.
 A generated reproduction is considered successful only when the same test fails on the original and passes on the patched version.
+Malformed reproduction generations are evidence that reproduction was not established; they are not proof that the patch works or fails.
 This iteration has no Challenger-generated nearby/adversarial tests yet.
 Return exactly one JSON object:
 {
@@ -48,6 +53,7 @@ class VerificationResultV2:
     patched: ExecutionResult
     reproduction_attempts: tuple[ReproductionAttemptResult, ...]
     successful_reproduction: ReproductionAttemptResult | None
+    generation_failures: tuple[str, ...]
     run_root: Path
 
 
@@ -120,6 +126,14 @@ def _feedback(result: ExecutionResult) -> str:
     )
 
 
+def _generation_feedback(error: str) -> str:
+    return (
+        "The prior reproduction response could not be used because it was malformed or unsafe: "
+        f"{error}. Return ONLY one valid JSON object with string fields `rationale` and `test_code`. "
+        "Escape newlines inside test_code as \\n. Do not include markdown fences or commentary."
+    )
+
+
 def verify_case_v2(
     case: VerificationCase,
     llm: LLM,
@@ -153,17 +167,37 @@ def verify_case_v2(
     ))
 
     attempts: list[ReproductionAttemptResult] = []
+    generation_failures: list[str] = []
     successful: ReproductionAttemptResult | None = None
     feedback: str | None = None
 
     for attempt_no in range(1, max_reproduction_attempts + 1):
-        candidate = generate_reproduction(
-            case,
-            investigation,
-            llm,
-            attempt=attempt_no,
-            feedback=feedback,
-        )
+        try:
+            candidate = generate_reproduction(
+                case,
+                investigation,
+                llm,
+                attempt=attempt_no,
+                feedback=feedback,
+            )
+        except ReproductionGenerationError as exc:
+            message = str(exc)
+            generation_failures.append(message)
+            run.attach(store.record(
+                stage=RunStage.REPRODUCTION_ATTEMPTED.value,
+                kind=EvidenceKind.MODEL_RESPONSE,
+                summary=f"Reproducer attempt {attempt_no} was unusable: {message}",
+                content=exc.raw_response,
+                suffix=".txt",
+                metadata={
+                    "attempt": attempt_no,
+                    "usable": False,
+                    "error": message,
+                },
+            ))
+            feedback = _generation_feedback(message)
+            continue
+
         run.attach(store.record(
             stage=RunStage.REPRODUCTION_ATTEMPTED.value,
             kind=EvidenceKind.GENERATED_TEST,
@@ -270,6 +304,7 @@ def verify_case_v2(
             "patched": {"passed": patched.passed, "exit_code": patched.exit_code, "stdout": patched.stdout, "stderr": patched.stderr},
         },
         "reproduction_attempts": reproduction_payload,
+        "reproduction_generation_failures": generation_failures,
         "successful_reproduction": successful is not None,
         "limitations": ["no challenger-generated nearby cases"],
     }
@@ -294,12 +329,14 @@ def verify_case_v2(
         "stages": run.events,
         "evidence_count": len(run.evidence),
         "reproduction_attempts": len(attempts),
+        "reproduction_generation_failures": len(generation_failures),
         "successful_reproduction": successful is not None,
         "capabilities": {
             "investigator": True,
             "existing_test_execution": True,
             "generated_reproduction": True,
             "bounded_reproduction_retry": True,
+            "generation_failure_recovery": True,
             "challenger": False,
         },
     }
@@ -315,5 +352,6 @@ def verify_case_v2(
         patched=patched,
         reproduction_attempts=tuple(attempts),
         successful_reproduction=successful,
+        generation_failures=tuple(generation_failures),
         run_root=store.root,
     )
