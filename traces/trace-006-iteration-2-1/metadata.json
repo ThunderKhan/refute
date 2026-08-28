@@ -1,0 +1,12 @@
+{
+  "trace_id": "trace-006-iteration-2-1",
+  "project": "refute",
+  "status": "pending_local_verification",
+  "iteration": "2.1",
+  "objective": "Correct generated reproduction semantics so only original-fail/patch-pass evidence is accepted as discriminating reproduction.",
+  "source_of_change": "Human requested: Start with 2.1 and fix the errors",
+  "privacy": {
+    "credentials_included": false,
+    "private_chain_of_thought_included": false
+  }
+}
