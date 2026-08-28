@@ -1,0 +1,8 @@
+{"step":1,"actor":"human","action":"request_change","summary":"Start Iteration 2.1 and fix the reproduction-semantics errors before adding more agent capability."}
+{"step":2,"actor":"agent","action":"inspect_repository","summary":"Reviewed Iteration 2 verifier, evaluator, CLI, and prior trace evidence showing original FAIL + patch FAIL was incorrectly treated as successful reproduction."}
+{"step":3,"actor":"agent","action":"design_change","summary":"Defined discriminating reproduction as original FAIL and patch PASS only. Original PASS/timeout and original FAIL + patch FAIL/timeout become retryable non-discriminating outcomes."}
+{"step":4,"actor":"agent","action":"implement","target":"src/refute/verify_v21.py","summary":"Added Iteration 2.1 verifier with both-version feedback on non-discriminating attempts, separate evidence fields, and dedicated result metadata."}
+{"step":5,"actor":"agent","action":"implement","target":"src/refute/benchmark/advanced_evaluator.py","summary":"Added separate 2.1 evaluation mode and artifact directory so Iteration 2 results are preserved."}
+{"step":6,"actor":"agent","action":"implement","target":"src/refute/cli.py","summary":"Added --iteration 2.1 as the default advanced path while retaining Iterations 1 and 2."}
+{"step":7,"actor":"agent","action":"add_tests","target":"tests/test_verify_v21.py","summary":"Added coverage proving original FAIL + patch FAIL is non-discriminating and triggers retry with both execution outputs, while original FAIL + patch PASS is accepted."}
+{"step":8,"actor":"agent","action":"trace_capture","summary":"Created trace-006 during implementation. Local test and benchmark results remain pending human verification."}
