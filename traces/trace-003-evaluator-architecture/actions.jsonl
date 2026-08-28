@@ -1,0 +1,13 @@
+{"step":1,"actor":"human","action":"instruction","result":"Complete missing revised Milestones 1 and 2 architecture work.","source":"conversation"}
+{"step":2,"actor":"agent","action":"inspect","target":"repository tree, CLI and benchmark tests","result":"Confirmed current static baseline and three-case benchmark before expansion.","source":"github"}
+{"step":3,"actor":"agent","action":"branch","target":"milestone-2-architecture","result":"Created an implementation branch to stage architecture changes before fast-forwarding main.","source":"github"}
+{"step":4,"actor":"agent","action":"implement","target":"src/refute/benchmark/evaluator.py","result":"Added case discovery, batch baseline execution, accuracy, false-acceptance rate, per-class accuracy, confusion matrix, runtime metrics and persisted reports.","source":"github"}
+{"step":5,"actor":"agent","action":"implement","target":"benchmark/case_004..010","result":"Expanded benchmark to ten controlled cases spanning all five verdict classes and varied failure patterns.","source":"github"}
+{"step":6,"actor":"agent","action":"implement","target":"src/refute/evidence/","result":"Added typed evidence records and append-only JSONL provenance storage.","source":"github"}
+{"step":7,"actor":"agent","action":"implement","target":"src/refute/orchestrator.py","result":"Added VerificationRun state machine with explicit legal stage transitions.","source":"github"}
+{"step":8,"actor":"agent","action":"architecture","target":"agents/runtime/providers/benchmark/evidence package boundaries","result":"Introduced stable subsystem boundaries without prematurely implementing every role as an LLM call.","source":"github"}
+{"step":9,"actor":"agent","action":"document","target":"ARCHITECTURE.md","result":"Recorded the design thesis: agents propose and reason; deterministic tools observe; evidence constrains the verdict.","source":"github"}
+{"step":10,"actor":"agent","action":"test_design","target":"tests/","result":"Added evaluator, evidence-store, orchestrator and ten-case benchmark catalog tests.","source":"github"}
+{"step":11,"actor":"agent","action":"merge","target":"main","result":"Fast-forwarded completed architecture branch to main.","source":"github"}
+{"step":12,"actor":"human","action":"run","target":"refute eval-baseline benchmark --provider ollama --model qwen3:0.6b","result":"10 cases; 10.0% verdict accuracy; 57.1% false acceptance rate; 2.405s average runtime.","source":"human_verification"}
+{"step":13,"actor":"agent","action":"analysis","result":"Interpreted false acceptance as 4 of 7 non-complete cases predicted complete_fix; froze this configuration as Baseline v1 rather than tuning after seeing results.","source":"conversation"}
