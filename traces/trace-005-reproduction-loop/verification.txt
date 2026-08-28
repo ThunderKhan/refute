@@ -1,4 +1,4 @@
-Verification status: RETRY REQUIRED AFTER SECOND FIX
+Verification status: RETRY REQUIRED AFTER THIRD FIX
 
 First local attempt on Windows with `qwen3:0.6b` failed before execution:
 
@@ -30,18 +30,40 @@ Second fix applied:
 - the run manifest records `reproduction_generation_failures` and `generation_failure_recovery`;
 - tests cover recovery after one malformed generation and graceful continuation when all three generations are malformed.
 
-Required local checks after pulling the second fix:
+Third local attempt after malformed-output recovery failed differently:
+
+`refute: error: could not reach language-model provider: timed out`
+
+The batch command failed with the same provider timeout.
+
+Third diagnosis:
+- provider timeouts are operational agent failures distinct from malformed structured output;
+- the Iteration 2 workflow was only recovering from malformed/unsafe Reproducer responses, while `LLMError` timeouts could still abort the run from Investigator, Reproducer, or Verifier calls.
+
+Third fix applied:
+- Investigator provider calls now receive a bounded retry before the run fails;
+- Reproducer provider timeouts are recorded as failed generation attempts and consume the existing bounded reproduction attempt budget instead of immediately aborting the run;
+- Verifier provider calls now receive a bounded retry;
+- provider failures are written to evidence metadata so they remain visible rather than being hidden;
+- the run manifest declares `provider_timeout_recovery` when Iteration 2 completes.
+
+Required local checks after pulling the third fix:
 1. git pull
 2. python -m pytest
-3. refute verify benchmark\case_001 --provider ollama --model qwen3:0.6b --iteration 2
-4. refute eval-advanced benchmark --provider ollama --model qwen3:0.6b --iteration 2
+3. confirm Ollama is responsive with `ollama list`
+4. refute verify benchmark\case_001 --provider ollama --model qwen3:0.6b --iteration 2
+5. refute eval-advanced benchmark --provider ollama --model qwen3:0.6b --iteration 2
+
+If `ollama list` itself hangs or errors, restart Ollama before rerunning `refute`; that would indicate a local provider/service problem rather than a verification-pipeline bug.
 
 Expected single-case behavior:
-- a malformed Reproducer response no longer terminates the run;
+- malformed Reproducer responses no longer terminate the run;
+- Reproducer provider timeouts no longer immediately terminate the run;
 - up to three generation/execution attempts may occur;
-- raw malformed responses are preserved in the run evidence;
+- raw malformed responses and provider failures are preserved in run evidence;
+- transient Investigator or Verifier provider failures receive a bounded retry;
 - if a valid reproduction is eventually produced, its original/patched execution is recorded;
-- if none is produced, the Verifier still runs using the remaining evidence.
+- if none is produced, the Verifier still runs using the remaining evidence, provided the provider is ultimately reachable.
 
 Expected aggregate evidence paths:
 - artifacts/eval/advanced_iteration_2/summary.json
