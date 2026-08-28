@@ -1,77 +1,104 @@
-Verification status: RETRY REQUIRED AFTER THIRD FIX
+Verification status: RETRY REQUIRED AFTER FOURTH FIX
 
-First local attempt on Windows with `qwen3:0.6b` failed before execution:
+Earlier local failures and recoveries
+------------------------------------
+
+1. Initial Reproducer output failed JSON parsing (`reproducer did not return valid JSON`).
+   Parsing was hardened to extract a valid JSON object from noisy model output.
+
+2. A second run showed that `qwen3:0.6b` can return no usable JSON at all.
+   Malformed/unsafe Reproducer generations became recoverable bounded attempts, with raw output preserved as evidence.
+
+3. A later run failed with `could not reach language-model provider: timed out`.
+   Investigator and Verifier provider calls gained bounded retry, while Reproducer provider failures became recorded failed generation attempts.
+
+Latest local verification before the fourth fix
+-----------------------------------------------
+
+The human pulled commit `0f36b31`, then ran:
+
+`python -m pytest`
+
+Observed result:
+
+`28 passed in 9.52s`
+
+`ollama list` returned normally and showed local model `qwen3:0.6b` (522 MB), confirming the Ollama service was reachable at that checkpoint.
+
+Single-case Iteration 2 run:
 
 `refute verify benchmark\case_001 --provider ollama --model qwen3:0.6b --iteration 2`
 
-Observed error:
+Observed:
+- original tests: FAIL (exit 1)
+- patched tests: PASS
+- reproduction attempts: 1
+- reported bug reproduced: yes
+- reproduction passes on patch: no
+- model verdict: `complete_fix`
+- model reason incorrectly claimed that the reproduction confirmed the fix was effective
 
-`refute: error: reproducer did not return valid JSON`
+This exposed a core architecture violation: the LLM verdict contradicted deterministic execution evidence. A generated test failed on the original and still failed on the patch, yet the model approved the patch as a complete fix.
 
-The batch command failed for the same reason before producing an Iteration 2 benchmark result.
+The human then started the ten-case Iteration 2 batch. It spent too long waiting on an Investigator provider request and was manually interrupted. The traceback ended in `urllib.request.urlopen(...)` / socket read with `KeyboardInterrupt`.
 
-Initial diagnosis and fix:
-- the initial Reproducer parser assumed the model response was either clean JSON or a single fenced JSON block;
-- small local models can prepend reasoning, `<think>` text, or markdown commentary around an otherwise valid JSON object;
-- parsing was changed to scan noisy output for the first decodable JSON object while preserving strict field validation and generated-test safety checks.
+Fourth diagnosis
+----------------
 
-Second local attempt after that parser fix still produced the same error for both the single-case and batch commands.
+Two independent problems remained:
 
-Second diagnosis:
-- some `qwen3:0.6b` responses contain no usable JSON object at all, so parser tolerance alone cannot make the response valid;
-- a malformed model generation should be treated as a recoverable agent failure inside the bounded Reproducer loop, not as a fatal verification error.
+1. Evidence constraint enforcement was only prompt-level. The system told the Verifier not to contradict tool output, but did not mechanically reject an impossible `complete_fix` verdict.
 
-Second fix applied:
-- malformed or unsafe Reproducer outputs are now caught as `ReproductionGenerationError`;
-- the raw unusable model response is persisted as evidence rather than discarded;
-- a concise formatting/validation error is fed back to the next Reproducer attempt;
-- the workflow retries within the existing bounded attempt budget;
-- if every Reproducer generation is unusable, verification still continues with existing deterministic tests and explicitly tells the Verifier that no reproduction was established;
-- the run manifest records `reproduction_generation_failures` and `generation_failure_recovery`;
-- tests cover recovery after one malformed generation and graceful continuation when all three generations are malformed.
+2. Batch evaluation had poor operational behavior: no per-case progress display, a long provider timeout, no partial checkpoint file, and a provider/validation failure could abort the entire batch.
 
-Third local attempt after malformed-output recovery failed differently:
+Fourth fix applied
+------------------
 
-`refute: error: could not reach language-model provider: timed out`
+Deterministic verdict gate:
+- Iteration 2 now computes explicit reasons that forbid `complete_fix`.
+- `complete_fix` is forbidden when the patched existing suite fails or times out.
+- `complete_fix` is forbidden when a generated reproduction fails on the original and the same test still fails on the patch.
+- these constraints are supplied to the Verifier before its model call;
+- after the model call, a deterministic post-check enforces the constraints even if the model ignores them;
+- a conflicting model `complete_fix` is conservatively converted to `inconclusive` rather than allowing approval;
+- `result.json` records the model-proposed verdict, final verdict, whether the gate overrode the model, and the exact constraint reasons.
 
-The batch command failed with the same provider timeout.
+Batch robustness and observability:
+- `eval-advanced` now prints per-case progress such as `[1/10] case_001 ...` and a result/runtime line after each case;
+- each completed case is checkpointed to `cases.partial.jsonl` immediately;
+- provider/validation errors are recorded as per-case errors and the batch continues instead of losing all prior work;
+- the final summary reports completed cases, errors, and whether the evaluation completed cleanly;
+- batch metrics with errors are explicitly marked as not cleanly comparable until the errors are resolved.
 
-Third diagnosis:
-- provider timeouts are operational agent failures distinct from malformed structured output;
-- the Iteration 2 workflow was only recovering from malformed/unsafe Reproducer responses, while `LLMError` timeouts could still abort the run from Investigator, Reproducer, or Verifier calls.
+Provider latency control:
+- language-model request timeout is now configurable with `--llm-timeout` or `REFUTE_LLM_TIMEOUT`;
+- the CLI default is 30 seconds instead of an implicit 120-second provider wait;
+- Iteration 2 batch evaluation uses one Investigator/Verifier provider attempt per case so one stuck request cannot silently consume multiple long retries;
+- Reproducer attempts remain bounded and configurable.
 
-Third fix applied:
-- Investigator provider calls now receive a bounded retry before the run fails;
-- Reproducer provider timeouts are recorded as failed generation attempts and consume the existing bounded reproduction attempt budget instead of immediately aborting the run;
-- Verifier provider calls now receive a bounded retry;
-- provider failures are written to evidence metadata so they remain visible rather than being hidden;
-- the run manifest declares `provider_timeout_recovery` when Iteration 2 completes.
+Automated coverage added:
+- a test now reproduces the exact failure class seen locally: generated test fails on original and patch, Verifier proposes `complete_fix`, deterministic gate must return `inconclusive` and record the override.
 
-Required local checks after pulling the third fix:
-1. git pull
-2. python -m pytest
-3. confirm Ollama is responsive with `ollama list`
-4. refute verify benchmark\case_001 --provider ollama --model qwen3:0.6b --iteration 2
-5. refute eval-advanced benchmark --provider ollama --model qwen3:0.6b --iteration 2
+Required local checks after pulling the fourth fix
+-------------------------------------------------
 
-If `ollama list` itself hangs or errors, restart Ollama before rerunning `refute`; that would indicate a local provider/service problem rather than a verification-pipeline bug.
+1. `git pull`
+2. `python -m pytest`
+3. `refute verify benchmark\case_001 --provider ollama --model qwen3:0.6b --iteration 2 --llm-timeout 30`
+4. `refute eval-advanced benchmark --provider ollama --model qwen3:0.6b --iteration 2 --llm-timeout 30`
 
-Expected single-case behavior:
-- malformed Reproducer responses no longer terminate the run;
-- Reproducer provider timeouts no longer immediately terminate the run;
-- up to three generation/execution attempts may occur;
-- raw malformed responses and provider failures are preserved in run evidence;
-- transient Investigator or Verifier provider failures receive a bounded retry;
-- if a valid reproduction is eventually produced, its original/patched execution is recorded;
-- if none is produced, the Verifier still runs using the remaining evidence, provided the provider is ultimately reachable.
+Expected single-case correction:
+- if the generated reproduction again fails on both original and patch, the final verdict must NOT be `complete_fix`;
+- if the model nevertheless proposes `complete_fix`, the deterministic gate should return `inconclusive` and state that conflicting evidence must be resolved.
 
-Expected aggregate evidence paths:
-- artifacts/eval/advanced_iteration_2/summary.json
-- artifacts/eval/advanced_iteration_2/cases.jsonl
-- artifacts/eval/advanced_iteration_2/report.md
+Expected batch behavior:
+- visible `[n/10]` progress;
+- no silent multi-minute stall on one provider call beyond the configured request timeout;
+- partial progress saved to `artifacts/eval/advanced_iteration_2/cases.partial.jsonl`;
+- one failed case should not erase or abort already completed cases.
 
 Frozen comparison points:
 - Baseline v1: 10.0% verdict accuracy, 57.1% false acceptance, 2.405s average runtime
 - Advanced Iteration 1: 40.0% verdict accuracy, 28.6% false acceptance, 5.641s average runtime
 
-Do not mark this trace complete until successful local results are supplied by the human.
+Do not mark Iteration 2 complete until a clean local batch result is supplied by the human.
