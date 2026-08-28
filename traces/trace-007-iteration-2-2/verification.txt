@@ -1,28 +1,42 @@
-Verification status: PENDING LOCAL RUN
+Verification status: COMPLETE — measured local run supplied by human
 
-Required local checks:
-1. git pull
-2. python -m pytest
-3. refute verify benchmark\case_001 --provider ollama --model qwen3:0.6b --iteration 2.2 --llm-timeout 30
-4. refute eval-advanced benchmark --provider ollama --model qwen3:0.6b --iteration 2.2 --llm-timeout 30
+Local single-case command:
+`refute verify benchmark\case_001 --provider ollama --model qwen3:0.6b --iteration 2.2 --llm-timeout 30`
 
-Expected single-case signals:
-- mode: advanced iteration 2.2
-- reproduction evidence counts split into high / diagnostic / none
-- non-discriminating generated tests must not be treated as proof that the patch is partial, ineffective, or regressing when the patched deterministic suite passes
-- repeated non-discriminating attempts may trigger `stopped early for stagnation: yes`
-- only original FAIL + patch PASS counts as high-confidence generated evidence
+Observed single-case result:
+- original tests: FAIL (exit 1)
+- patched tests: PASS
+- reproduction attempts: 1
+- discriminating reproduction found: no
+- reproduction evidence: high=0 diagnostic=1 none=0
+- stopped early for stagnation: no
+- verdict: inconclusive
 
-Separate aggregate artifacts:
-- artifacts/eval/advanced_iteration_2_2/summary.json
-- artifacts/eval/advanced_iteration_2_2/cases.jsonl
-- artifacts/eval/advanced_iteration_2_2/report.md
-- artifacts/eval/advanced_iteration_2_2/cases.partial.jsonl
+This confirms the evidence-weighting guard worked for the specific unsupported-negative-verdict failure seen in Iteration 2.1: a diagnostic-only generated test did not drive `partial_fix`, `ineffective_fix`, or `regression_introduced` while the patched deterministic suite passed.
 
-Frozen comparison points:
-- Baseline v1: 10.0% accuracy, 57.1% false acceptance, 2.405s average runtime
-- Advanced Iteration 1: 40.0% accuracy, 28.6% false acceptance, 5.641s average runtime
-- Advanced Iteration 2: 10.0% accuracy, 0.0% false acceptance, 36.569s average runtime
-- Advanced Iteration 2.1: 40.0% accuracy, 0.0% false acceptance, 52.584s average runtime
+Local ten-case benchmark:
+- completed cases: 10/10
+- errors: 0
+- verdict accuracy: 30.0%
+- false acceptance rate: 0.0%
+- average runtime: 50.863s/case
 
-Do not mark Iteration 2.2 complete until local outputs are supplied by the human.
+Per-case predictions:
+1. case_001 -> inconclusive (wrong, 52.66s)
+2. case_002 -> partial_fix (correct, 44.23s)
+3. case_003 -> partial_fix (wrong, 80.66s)
+4. case_004 -> inconclusive (wrong, 13.46s)
+5. case_005 -> inconclusive (wrong, 43.70s)
+6. case_006 -> inconclusive (wrong, 74.95s)
+7. case_007 -> inconclusive (wrong, 31.10s)
+8. case_008 -> inconclusive (wrong, 97.76s)
+9. case_009 -> complete_fix (correct, 20.38s)
+10. case_010 -> inconclusive (correct, 49.74s)
+
+Conclusion:
+- safety remained at 0.0% false acceptance;
+- accuracy fell from Iteration 2.1's 40.0% to 30.0%;
+- runtime only fell from 52.584s to 50.863s, so stagnation stopping did not solve the dominant cost;
+- the system became too conservative and remained too dependent on the semantic verifier even when deterministic test-suite deltas already contained useful evidence.
+
+Decision: preserve Iteration 2.2 as a measured negative/neutral experiment and move to an evidence-first test-delta design in Iteration 2.3.
