@@ -53,6 +53,17 @@ class InspectionResult:
     evidence_paths: list[Path] = field(default_factory=list)
 
 
+@dataclass(frozen=True, slots=True)
+class BaselineResult:
+    case_id: str
+    verdict: Verdict
+    reason: str
+    raw_response: str
+    prompt_path: Path
+    response_path: Path
+    result_path: Path
+
+
 def normalize_command(parts: Sequence[str]) -> tuple[str, ...]:
     command = tuple(str(part) for part in parts)
     if not command:
