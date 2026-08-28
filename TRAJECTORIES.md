@@ -50,6 +50,13 @@ Repository tree inspection through GitHub confirmed that the package, benchmark 
 
 An attempt to clone the public repository into the execution sandbox for an independent local test run failed because the sandbox could not resolve `github.com`. This was an environment/network limitation rather than an observed project failure.
 
+The human then verified the milestone locally on Windows:
+
+- editable package installation completed successfully,
+- `python -m pytest` returned `8 passed in 3.90s`,
+- `refute inspect benchmark\case_001` reported the original fixture as failing and the patched fixture as passing,
+- execution evidence was persisted under `artifacts/case_001/`.
+
 ### Decision / learning
 
 No LLM patch-verification logic was added in this milestone.
@@ -59,3 +66,52 @@ The project intentionally establishes deterministic execution and benchmark grou
 ### Result
 
 Milestone 1 establishes the deterministic spine needed for the next experiment: a static-review baseline evaluated against the same benchmark cases that the advanced workflow will use.
+
+---
+
+## trajectory-002 — Static-review baseline
+
+### Human instruction
+
+> "alright go ahead and implement the next step"
+
+### Agent objective
+
+Implement the intentionally simple baseline required for the baseline-versus-advanced experiment.
+
+The baseline must make a patch verdict from issue text and a static code diff only. It must not execute code, reproduce the bug, or use the deterministic executor.
+
+### Observable actions
+
+The coding agent:
+
+- inspected the current core models, CLI, and benchmark loader,
+- added a provider abstraction supporting local Ollama and generic OpenAI-compatible chat endpoints using only the Python standard library,
+- added `BaselineResult`,
+- implemented deterministic source-diff construction from the original and patched benchmark trees,
+- defined a strict static-review system prompt that explicitly forbids claims of execution,
+- implemented structured JSON parsing into the five project verdict classes,
+- persisted the exact baseline prompt, raw response, and parsed result under `artifacts/<case_id>/baseline/`,
+- exposed the workflow as `refute baseline <case>`,
+- added tests using a fake language model so baseline plumbing can be tested without network access or API credentials.
+
+### Design checkpoint
+
+The expected benchmark verdict is never included in the baseline prompt. This prevents ground-truth leakage into the experiment.
+
+The baseline deliberately receives less capability than the eventual advanced workflow: it can reason statically but cannot execute tests or generate runtime evidence. This difference is intentional and must be disclosed in the final comparison.
+
+### Verification status
+
+The code was pushed to `main`. Automated baseline tests were added, but the coding agent cannot execute the repository in its current network-isolated tool environment. Local verification by the human is therefore required before this milestone is considered closed.
+
+### Next evidence needed
+
+Run locally:
+
+```powershell
+python -m pytest
+refute baseline benchmark\case_001 --provider ollama --model <installed-model>
+```
+
+Capture the test result and first real baseline verdict before expanding the benchmark or adding advanced verification logic.
