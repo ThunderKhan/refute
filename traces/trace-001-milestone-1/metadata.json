@@ -1,0 +1,22 @@
+{
+  "trace_id": "trace-001-milestone-1",
+  "project": "refute",
+  "round": "Milestone 1 deterministic spine",
+  "status": "verified_locally",
+  "repository": "ThunderKhan/refute",
+  "source_commit_range": {
+    "base": "2b7cfe7",
+    "head": "d099e74"
+  },
+  "agent_role": "coding agent",
+  "human_checkpoint": "Direct pushes to the repository were explicitly authorized.",
+  "verification": {
+    "pytest": "8 passed in 3.90s",
+    "inspect_command": "refute inspect benchmark\\case_001",
+    "inspect_result": "original FAIL, patched PASS, execution evidence persisted"
+  },
+  "privacy": {
+    "contains_credentials": false,
+    "contains_private_third_party_code": false
+  }
+}
