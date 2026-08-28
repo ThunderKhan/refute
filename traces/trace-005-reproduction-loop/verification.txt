@@ -1,4 +1,4 @@
-Verification status: RETRY REQUIRED AFTER FIX
+Verification status: RETRY REQUIRED AFTER SECOND FIX
 
 First local attempt on Windows with `qwen3:0.6b` failed before execution:
 
@@ -10,28 +10,38 @@ Observed error:
 
 The batch command failed for the same reason before producing an Iteration 2 benchmark result.
 
-Diagnosis:
+Initial diagnosis and fix:
 - the initial Reproducer parser assumed the model response was either clean JSON or a single fenced JSON block;
 - small local models can prepend reasoning, `<think>` text, or markdown commentary around an otherwise valid JSON object;
-- that parser failure aborted the whole workflow before any reproduction execution occurred.
+- parsing was changed to scan noisy output for the first decodable JSON object while preserving strict field validation and generated-test safety checks.
 
-Fix applied:
-- Reproducer parsing now scans noisy model output for the first decodable JSON object while preserving strict field validation and generated-test safety checks;
-- the prompt now explicitly requires syntactically valid JSON with escaped newlines in `test_code`;
-- tests were added for reasoning-prefixed and markdown-wrapped JSON responses.
+Second local attempt after that parser fix still produced the same error for both the single-case and batch commands.
 
-Required local checks after pulling the fix:
+Second diagnosis:
+- some `qwen3:0.6b` responses contain no usable JSON object at all, so parser tolerance alone cannot make the response valid;
+- a malformed model generation should be treated as a recoverable agent failure inside the bounded Reproducer loop, not as a fatal verification error.
+
+Second fix applied:
+- malformed or unsafe Reproducer outputs are now caught as `ReproductionGenerationError`;
+- the raw unusable model response is persisted as evidence rather than discarded;
+- a concise formatting/validation error is fed back to the next Reproducer attempt;
+- the workflow retries within the existing bounded attempt budget;
+- if every Reproducer generation is unusable, verification still continues with existing deterministic tests and explicitly tells the Verifier that no reproduction was established;
+- the run manifest records `reproduction_generation_failures` and `generation_failure_recovery`;
+- tests cover recovery after one malformed generation and graceful continuation when all three generations are malformed.
+
+Required local checks after pulling the second fix:
 1. git pull
 2. python -m pytest
 3. refute verify benchmark\case_001 --provider ollama --model qwen3:0.6b --iteration 2
 4. refute eval-advanced benchmark --provider ollama --model qwen3:0.6b --iteration 2
 
-Expected single-case signals:
-- mode: advanced iteration 2
-- one or more reproduction attempts
-- reported bug reproduced: yes/no
-- if reproduced, whether the same generated test passes on the patch
-- final evidence-constrained verdict
+Expected single-case behavior:
+- a malformed Reproducer response no longer terminates the run;
+- up to three generation/execution attempts may occur;
+- raw malformed responses are preserved in the run evidence;
+- if a valid reproduction is eventually produced, its original/patched execution is recorded;
+- if none is produced, the Verifier still runs using the remaining evidence.
 
 Expected aggregate evidence paths:
 - artifacts/eval/advanced_iteration_2/summary.json
