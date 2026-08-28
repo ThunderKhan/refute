@@ -1,0 +1,12 @@
+{"step":1,"actor":"human","action":"instruction","result":"Implement Milestone 1 and push directly to GitHub.","source":"conversation"}
+{"step":2,"actor":"agent","action":"inspect","target":"repository scaffold and planning docs","result":"Confirmed package scaffold and planning documents existed before implementation.","source":"conversation"}
+{"step":3,"actor":"agent","action":"implement","target":"pyproject.toml and core models","result":"Configured package metadata and added Verdict, VerificationCase, ExecutionResult and InspectionResult.","source":"github"}
+{"step":4,"actor":"agent","action":"implement","target":"src/refute/case.py","result":"Added strict benchmark-case loading and validation.","source":"github"}
+{"step":5,"actor":"agent","action":"implement","target":"src/refute/executor.py","result":"Added deterministic subprocess execution with stdout, stderr, exit status, duration and timeout capture.","source":"github"}
+{"step":6,"actor":"agent","action":"implement","target":"src/refute/inspect.py and CLI","result":"Added original/patched inspection flow and evidence persistence under artifacts/<case_id>/.","source":"github"}
+{"step":7,"actor":"agent","action":"implement","target":"benchmark/case_001..003","result":"Added seed complete-fix, partial-fix and regression-introducing fixtures.","source":"github"}
+{"step":8,"actor":"agent","action":"test_design","target":"tests/","result":"Added tests for case loading, command execution, timeout behavior and benchmark execution shape.","source":"github"}
+{"step":9,"actor":"tool","action":"verification_attempt","target":"network-isolated execution sandbox","result":"Independent clone/test attempt could not resolve github.com; no project failure was observed.","source":"conversation"}
+{"step":10,"actor":"human","action":"test","target":"python -m pytest","result":"8 passed in 3.90s.","source":"human_verification"}
+{"step":11,"actor":"human","action":"run","target":"refute inspect benchmark\\case_001","result":"Original failed, patched passed, evidence files were persisted.","source":"human_verification"}
+{"step":12,"actor":"agent","action":"decision","result":"Close Milestone 1 only after local verification; preserve deterministic execution as the truth layer before adding LLM reasoning.","source":"conversation"}
