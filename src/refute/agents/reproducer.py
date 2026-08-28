@@ -24,8 +24,15 @@ Constraints:
 - do not use network access, subprocesses, file deletion, shell commands, eval, exec, or dynamic imports;
 - do not modify project files;
 - do not encode or reference the benchmark's expected verdict;
-- if prior execution feedback is supplied, revise the test to better reproduce the reported issue.
+- if prior execution feedback is supplied, revise the test to better reproduce the reported issue;
+- JSON must be syntactically valid; escape newlines inside test_code as \\n and do not wrap the JSON in commentary.
 """
+
+
+class ReproductionGenerationError(ValueError):
+    def __init__(self, message: str, raw_response: str):
+        super().__init__(message)
+        self.raw_response = raw_response
 
 
 @dataclass(frozen=True, slots=True)
@@ -67,23 +74,41 @@ def generate_reproduction(
         SYSTEM_PROMPT,
         build_reproducer_prompt(case, investigation, attempt=attempt, feedback=feedback),
     )
-    return parse_reproduction(raw, attempt=attempt)
+    try:
+        return parse_reproduction(raw, attempt=attempt)
+    except ValueError as exc:
+        raise ReproductionGenerationError(str(exc), raw) from exc
+
+
+def _extract_json_object(raw: str) -> dict:
+    candidate = raw.strip()
+    decoder = json.JSONDecoder()
+
+    # Fast path for clean JSON.
+    try:
+        payload = json.loads(candidate)
+        if isinstance(payload, dict):
+            return payload
+    except json.JSONDecodeError:
+        pass
+
+    # Small local models often prepend reasoning, <think> blocks, or markdown.
+    # Scan for the first decodable JSON object instead of failing on surrounding text.
+    for index, char in enumerate(candidate):
+        if char != "{":
+            continue
+        try:
+            payload, _ = decoder.raw_decode(candidate[index:])
+        except json.JSONDecodeError:
+            continue
+        if isinstance(payload, dict):
+            return payload
+
+    raise ValueError("reproducer did not return valid JSON")
 
 
 def parse_reproduction(raw: str, *, attempt: int) -> ReproductionCandidate:
-    candidate = raw.strip()
-    if candidate.startswith("```"):
-        lines = candidate.splitlines()
-        if len(lines) >= 3 and lines[-1].strip().startswith("```"):
-            candidate = "\n".join(lines[1:-1])
-            if candidate.lstrip().startswith("json"):
-                candidate = candidate.lstrip()[4:].lstrip()
-    try:
-        payload = json.loads(candidate)
-    except json.JSONDecodeError as exc:
-        raise ValueError("reproducer did not return valid JSON") from exc
-    if not isinstance(payload, dict):
-        raise ValueError("reproducer response must be a JSON object")
+    payload = _extract_json_object(raw)
     rationale = payload.get("rationale")
     test_code = payload.get("test_code")
     if not isinstance(rationale, str) or not rationale.strip():
