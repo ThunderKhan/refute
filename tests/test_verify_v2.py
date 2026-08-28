@@ -23,8 +23,8 @@ class SequencedLLM:
         return self.responses.pop(0)
 
 
-def test_verify_v2_retries_until_original_bug_reproduces(tmp_path: Path):
-    investigator = json.dumps(
+def _investigator_payload() -> str:
+    return json.dumps(
         {
             "expected_behavior": "0 through 100 inclusive are valid",
             "reported_failure": "0 is rejected",
@@ -34,25 +34,39 @@ def test_verify_v2_retries_until_original_bug_reproduces(tmp_path: Path):
             "risk_areas": ["lower boundary", "upper boundary"],
         }
     )
+
+
+def _valid_repro_payload() -> str:
+    return json.dumps(
+        {
+            "rationale": "Exercise the reported lower-boundary failure.",
+            "test_code": "from app import clamp_percentage\n\ndef test_zero_is_valid():\n    assert clamp_percentage(0) == 0\n",
+        }
+    )
+
+
+def _verifier_payload() -> str:
+    return json.dumps(
+        {
+            "verdict": "complete_fix",
+            "reason": "The generated reproduction fails on the original and passes on the patch, while the patched existing suite passes.",
+        }
+    )
+
+
+def test_verify_v2_retries_until_original_bug_reproduces(tmp_path: Path):
     first_repro = json.dumps(
         {
             "rationale": "A deliberately weak first attempt.",
             "test_code": "def test_noop():\n    assert True\n",
         }
     )
-    second_repro = json.dumps(
-        {
-            "rationale": "Exercise the reported lower-boundary failure.",
-            "test_code": "from app import clamp_percentage\n\ndef test_zero_is_valid():\n    assert clamp_percentage(0) == 0\n",
-        }
-    )
-    verifier = json.dumps(
-        {
-            "verdict": "complete_fix",
-            "reason": "The generated reproduction fails on the original and passes on the patch, while the patched existing suite passes.",
-        }
-    )
-    llm = SequencedLLM([investigator, first_repro, second_repro, verifier])
+    llm = SequencedLLM([
+        _investigator_payload(),
+        first_repro,
+        _valid_repro_payload(),
+        _verifier_payload(),
+    ])
     case = load_case(REPO_ROOT / "benchmark" / "case_001")
 
     result = verify_case_v2(
@@ -69,15 +83,84 @@ def test_verify_v2_retries_until_original_bug_reproduces(tmp_path: Path):
     assert result.reproduction_attempts[0].reproduced is False
     assert result.successful_reproduction is result.reproduction_attempts[1]
     assert result.successful_reproduction.fixed_by_patch is True
+    assert result.generation_failures == ()
     assert len(llm.calls) == 4
 
     manifest = json.loads((result.run_root / "result.json").read_text(encoding="utf-8"))
     assert manifest["mode"] == "advanced_iteration_2"
     assert manifest["successful_reproduction"] is True
     assert manifest["capabilities"]["bounded_reproduction_retry"] is True
+    assert manifest["capabilities"]["generation_failure_recovery"] is True
     assert manifest["capabilities"]["challenger"] is False
 
     evidence = (result.run_root / "evidence.jsonl").read_text(encoding="utf-8")
     assert "generated_test" in evidence
     assert "NOT_REPRODUCED" in evidence
     assert "REPRODUCED" in evidence
+
+
+def test_verify_v2_recovers_from_malformed_generation(tmp_path: Path):
+    malformed = "I think the test should target zero. Here is Python: assert clamp_percentage(0) == 0"
+    llm = SequencedLLM([
+        _investigator_payload(),
+        malformed,
+        _valid_repro_payload(),
+        _verifier_payload(),
+    ])
+    case = load_case(REPO_ROOT / "benchmark" / "case_001")
+
+    result = verify_case_v2(
+        case,
+        llm,
+        artifacts_root=tmp_path,
+        timeout_seconds=10,
+        max_reproduction_attempts=3,
+        run_id="test-v2-malformed",
+    )
+
+    assert result.verdict is Verdict.COMPLETE_FIX
+    assert result.generation_failures == ("reproducer did not return valid JSON",)
+    assert len(result.reproduction_attempts) == 1
+    assert result.successful_reproduction is result.reproduction_attempts[0]
+    assert len(llm.calls) == 4
+
+    evidence = (result.run_root / "evidence.jsonl").read_text(encoding="utf-8")
+    assert "was unusable" in evidence
+    assert malformed in (result.run_root / "reproduction_attempted" / "ev_0003.txt").read_text(encoding="utf-8")
+
+
+def test_verify_v2_continues_when_all_generations_are_malformed(tmp_path: Path):
+    malformed = "not json"
+    verifier = json.dumps(
+        {
+            "verdict": "inconclusive",
+            "reason": "Existing tests provide evidence, but no usable generated reproduction was produced.",
+        }
+    )
+    llm = SequencedLLM([
+        _investigator_payload(),
+        malformed,
+        malformed,
+        malformed,
+        verifier,
+    ])
+    case = load_case(REPO_ROOT / "benchmark" / "case_001")
+
+    result = verify_case_v2(
+        case,
+        llm,
+        artifacts_root=tmp_path,
+        timeout_seconds=10,
+        max_reproduction_attempts=3,
+        run_id="test-v2-all-malformed",
+    )
+
+    assert result.verdict is Verdict.INCONCLUSIVE
+    assert len(result.generation_failures) == 3
+    assert result.reproduction_attempts == ()
+    assert result.successful_reproduction is None
+    assert len(llm.calls) == 5
+
+    manifest = json.loads((result.run_root / "result.json").read_text(encoding="utf-8"))
+    assert manifest["reproduction_generation_failures"] == 3
+    assert manifest["successful_reproduction"] is False
