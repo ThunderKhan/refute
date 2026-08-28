@@ -20,12 +20,16 @@ class RunStage(str, Enum):
 
 _ALLOWED_TRANSITIONS: dict[RunStage, set[RunStage]] = {
     RunStage.LOADED: {RunStage.INVESTIGATED},
-    # Iteration 1 intentionally skips generated reproduction. Later iterations can
-    # take the reproduction branch without changing the run model.
+    # Earlier iterations reproduce first; evidence-first iterations may execute
+    # the deterministic suite before deciding whether reproduction is useful.
     RunStage.INVESTIGATED: {RunStage.REPRODUCTION_ATTEMPTED, RunStage.ORIGINAL_VERIFIED},
-    RunStage.REPRODUCTION_ATTEMPTED: {RunStage.ORIGINAL_VERIFIED},
+    RunStage.REPRODUCTION_ATTEMPTED: {RunStage.ORIGINAL_VERIFIED, RunStage.REGRESSION_CHECKED},
     RunStage.ORIGINAL_VERIFIED: {RunStage.PATCH_VERIFIED},
-    RunStage.PATCH_VERIFIED: {RunStage.CHALLENGED, RunStage.REGRESSION_CHECKED},
+    RunStage.PATCH_VERIFIED: {
+        RunStage.REPRODUCTION_ATTEMPTED,
+        RunStage.CHALLENGED,
+        RunStage.REGRESSION_CHECKED,
+    },
     RunStage.CHALLENGED: {RunStage.REGRESSION_CHECKED},
     RunStage.REGRESSION_CHECKED: {RunStage.VERDICT_READY},
     RunStage.VERDICT_READY: {RunStage.COMPLETE},
