@@ -4,6 +4,8 @@ This file records representative coding-agent trajectories used to build `refute
 
 The goal is to preserve the agent instruction, observable actions/tool results, feedback, retries, and human checkpoints without reconstructing them after the hackathon.
 
+Portable normalized trace packages are stored under `traces/`. Those packages are provider-neutral, exclude secrets, and are intended to make later conversion to any required acquisition/submission format easier.
+
 ---
 
 ## trajectory-001 — Milestone 1 deterministic spine
@@ -67,6 +69,8 @@ The project intentionally establishes deterministic execution and benchmark grou
 
 Milestone 1 establishes the deterministic spine needed for the next experiment: a static-review baseline evaluated against the same benchmark cases that the advanced workflow will use.
 
+Normalized trace: `traces/trace-001-milestone-1/`.
+
 ---
 
 ## trajectory-002 — Static-review baseline
@@ -113,6 +117,8 @@ The human verified this milestone locally:
 
 The initial static baseline therefore scored 0/3 on the seed set. This is only an early signal and is not treated as a final benchmark claim.
 
+Normalized trace: `traces/trace-002-static-baseline/`.
+
 ---
 
 ## trajectory-003 — Revised Milestones 1–2: benchmark evaluator and architecture backbone
@@ -158,4 +164,39 @@ The advanced investigator, reproducer, challenger and verifier remain future cap
 
 ### Verification status
 
-The coding changes are on `main`, but this environment cannot run the local repository test suite. The human must run the updated tests and the ten-case baseline evaluation locally before the round is considered experimentally closed.
+The human ran the ten-case baseline evaluation locally with:
+
+```powershell
+refute eval-baseline benchmark --provider ollama --model qwen3:0.6b
+```
+
+Observed result:
+
+- cases: 10,
+- verdict accuracy: 10.0%,
+- false acceptance rate: 57.1%,
+- average runtime: 2.405 seconds.
+
+This exact configuration is frozen as Baseline v1 so later advanced iterations can be compared without tuning the baseline after seeing its failures.
+
+Normalized trace: `traces/trace-003-evaluator-architecture/`.
+
+---
+
+## Ongoing trace-capture rule
+
+From this point onward, every substantial coding-agent round should update both this human-readable trajectory log and a normalized package under `traces/` while the work is still fresh.
+
+Each future trace should preserve, when available:
+
+- the exact human instruction,
+- agent objective and plan,
+- repository inspection and tool actions,
+- edits or source commit range,
+- failures, retries and corrections,
+- test/tool feedback,
+- human checkpoints,
+- final measurable outcome,
+- model/provider metadata when relevant.
+
+Historical gaps must not be backfilled with invented details. Secrets and unrelated private data must never be recorded.
