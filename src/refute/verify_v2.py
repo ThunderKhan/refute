@@ -23,6 +23,7 @@ Use only the supplied Investigator hypothesis, existing-test evidence, and gener
 Do not invent execution facts and do not override explicit tool results.
 A generated reproduction is considered successful only when the same test fails on the original and passes on the patched version.
 Malformed or timed-out reproduction generations are evidence that reproduction was not established; they are not proof that the patch works or fails.
+The input may contain deterministic verdict constraints. You MUST obey them. In particular, if `complete_fix_forbidden_reasons` is non-empty, you must not return `complete_fix`.
 This iteration has no Challenger-generated nearby/adversarial tests yet.
 Return exactly one JSON object:
 {
@@ -140,7 +141,7 @@ def _investigate_with_retry(
     store: EvidenceStore,
     run: VerificationRun,
     *,
-    max_attempts: int = 2,
+    max_attempts: int,
 ) -> Investigation:
     last_error: LLMError | None = None
     for attempt in range(1, max_attempts + 1):
@@ -166,7 +167,7 @@ def _verifier_complete_with_retry(
     store: EvidenceStore,
     run: VerificationRun,
     *,
-    max_attempts: int = 2,
+    max_attempts: int,
 ) -> str:
     last_error: LLMError | None = None
     for attempt in range(1, max_attempts + 1):
@@ -186,6 +187,43 @@ def _verifier_complete_with_retry(
     ) from last_error
 
 
+def _complete_fix_forbidden_reasons(
+    patched: ExecutionResult,
+    successful_reproduction: ReproductionAttemptResult | None,
+) -> tuple[str, ...]:
+    reasons: list[str] = []
+    if patched.timed_out:
+        reasons.append("the patched existing test suite timed out")
+    elif not patched.passed:
+        reasons.append("the patched existing test suite failed")
+
+    if (
+        successful_reproduction is not None
+        and not successful_reproduction.fixed_by_patch
+    ):
+        reasons.append(
+            "a generated test failed on the original and still failed on the patch"
+        )
+    return tuple(reasons)
+
+
+def _enforce_evidence_gate(
+    proposed_verdict: Verdict,
+    proposed_reason: str,
+    forbidden_reasons: tuple[str, ...],
+) -> tuple[Verdict, str, bool]:
+    if proposed_verdict is not Verdict.COMPLETE_FIX or not forbidden_reasons:
+        return proposed_verdict, proposed_reason, False
+
+    reason_text = "; ".join(forbidden_reasons)
+    return (
+        Verdict.INCONCLUSIVE,
+        "Deterministic evidence gate rejected the model's complete_fix verdict because "
+        f"{reason_text}. The conflicting evidence must be resolved before the patch can be approved.",
+        True,
+    )
+
+
 def verify_case_v2(
     case: VerificationCase,
     llm: LLM,
@@ -193,10 +231,13 @@ def verify_case_v2(
     artifacts_root: str | Path = "artifacts",
     timeout_seconds: float = 20.0,
     max_reproduction_attempts: int = 3,
+    max_provider_attempts: int = 2,
     run_id: str | None = None,
 ) -> VerificationResultV2:
     if max_reproduction_attempts < 1:
         raise ValueError("max_reproduction_attempts must be at least 1")
+    if max_provider_attempts < 1:
+        raise ValueError("max_provider_attempts must be at least 1")
 
     resolved_run_id = run_id or f"{case.case_id}-{uuid.uuid4().hex[:10]}"
     run = VerificationRun(resolved_run_id, case.case_id)
@@ -208,7 +249,9 @@ def verify_case_v2(
         summary="verification case loaded; benchmark oracle withheld from agents",
     ))
 
-    investigation = _investigate_with_retry(case, llm, store, run)
+    investigation = _investigate_with_retry(
+        case, llm, store, run, max_attempts=max_provider_attempts
+    )
     run.advance(RunStage.INVESTIGATED)
     run.attach(store.record(
         stage=RunStage.INVESTIGATED.value,
@@ -361,6 +404,7 @@ def verify_case_v2(
         for item in attempts
     ]
 
+    forbidden_reasons = _complete_fix_forbidden_reasons(patched, successful)
     verifier_input = {
         "investigation": investigation.to_dict(),
         "existing_tests": {
@@ -370,6 +414,7 @@ def verify_case_v2(
         "reproduction_attempts": reproduction_payload,
         "reproduction_generation_failures": generation_failures,
         "successful_reproduction": successful is not None,
+        "complete_fix_forbidden_reasons": list(forbidden_reasons),
         "limitations": ["no challenger-generated nearby cases"],
     }
     raw_verdict = _verifier_complete_with_retry(
@@ -377,15 +422,28 @@ def verify_case_v2(
         json.dumps(verifier_input, indent=2),
         store,
         run,
+        max_attempts=max_provider_attempts,
     )
-    verdict, reason = _parse_verdict(raw_verdict)
+    proposed_verdict, proposed_reason = _parse_verdict(raw_verdict)
+    verdict, reason, gate_overrode_model = _enforce_evidence_gate(
+        proposed_verdict,
+        proposed_reason,
+        forbidden_reasons,
+    )
+
     run.advance(RunStage.VERDICT_READY)
     run.attach(store.record(
         stage=RunStage.VERDICT_READY.value,
         kind=EvidenceKind.VERDICT,
         summary=f"evidence-constrained verdict: {verdict.value}",
         content=raw_verdict,
-        metadata={"verdict": verdict.value, "reason": reason},
+        metadata={
+            "proposed_verdict": proposed_verdict.value,
+            "final_verdict": verdict.value,
+            "reason": reason,
+            "evidence_gate_overrode_model": gate_overrode_model,
+            "complete_fix_forbidden_reasons": list(forbidden_reasons),
+        },
     ))
     run.advance(RunStage.COMPLETE)
 
@@ -395,6 +453,10 @@ def verify_case_v2(
         "mode": "advanced_iteration_2",
         "verdict": verdict.value,
         "reason": reason,
+        "model_proposed_verdict": proposed_verdict.value,
+        "model_proposed_reason": proposed_reason,
+        "evidence_gate_overrode_model": gate_overrode_model,
+        "complete_fix_forbidden_reasons": list(forbidden_reasons),
         "stages": run.events,
         "evidence_count": len(run.evidence),
         "reproduction_attempts": len(attempts),
@@ -407,6 +469,7 @@ def verify_case_v2(
             "bounded_reproduction_retry": True,
             "generation_failure_recovery": True,
             "provider_timeout_recovery": True,
+            "deterministic_verdict_gate": True,
             "challenger": False,
         },
     }
