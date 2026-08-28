@@ -1,4 +1,4 @@
-Verification status: RETRY REQUIRED AFTER FOURTH FIX
+Verification status: ITERATION 2 EVALUATED; NEXT FIX REQUIRED
 
 Earlier local failures and recoveries
 ------------------------------------
@@ -12,93 +12,102 @@ Earlier local failures and recoveries
 3. A later run failed with `could not reach language-model provider: timed out`.
    Investigator and Verifier provider calls gained bounded retry, while Reproducer provider failures became recorded failed generation attempts.
 
-Latest local verification before the fourth fix
+4. A later single-case run produced contradictory evidence: the generated reproduction failed on both original and patched code, but the model still proposed `complete_fix`.
+   A deterministic verdict gate was added so explicit execution facts can mechanically constrain model approval.
+
+5. The first Iteration 2 batch was manually interrupted because one provider request stalled too long and the evaluator had no progress display.
+   The evaluator gained per-case progress, configurable LLM timeout, checkpointing, and per-case error handling.
+
+Latest local verification after the fourth fix
 -----------------------------------------------
 
-The human pulled commit `0f36b31`, then ran:
+The human pulled the latest `main` and ran:
 
 `python -m pytest`
 
 Observed result:
 
-`28 passed in 9.52s`
-
-`ollama list` returned normally and showed local model `qwen3:0.6b` (522 MB), confirming the Ollama service was reachable at that checkpoint.
+`29 passed in 12.56s`
 
 Single-case Iteration 2 run:
 
-`refute verify benchmark\case_001 --provider ollama --model qwen3:0.6b --iteration 2`
+`refute verify benchmark\case_001 --provider ollama --model qwen3:0.6b --iteration 2 --llm-timeout 30`
 
 Observed:
+- run: `case_001-fd04af47b4`
 - original tests: FAIL (exit 1)
 - patched tests: PASS
 - reproduction attempts: 1
 - reported bug reproduced: yes
 - reproduction passes on patch: no
-- model verdict: `complete_fix`
-- model reason incorrectly claimed that the reproduction confirmed the fix was effective
+- final verdict: `partial_fix`
+- final reason: the generated reproduction still failed on the patched version
 
-This exposed a core architecture violation: the LLM verdict contradicted deterministic execution evidence. A generated test failed on the original and still failed on the patch, yet the model approved the patch as a complete fix.
+This confirms that the previous impossible `complete_fix` outcome is no longer being accepted. However, the run also exposed a deeper reproduction-quality problem: a generated test that fails on both original and patch is currently treated as a successful reproduction of the reported bug and stops the retry loop, even though it does not discriminate buggy from fixed behavior.
 
-The human then started the ten-case Iteration 2 batch. It spent too long waiting on an Investigator provider request and was manually interrupted. The traceback ended in `urllib.request.urlopen(...)` / socket read with `KeyboardInterrupt`.
+Clean ten-case Iteration 2 batch
+--------------------------------
 
-Fourth diagnosis
-----------------
+Command:
 
-Two independent problems remained:
+`refute eval-advanced benchmark --provider ollama --model qwen3:0.6b --iteration 2 --llm-timeout 30`
 
-1. Evidence constraint enforcement was only prompt-level. The system told the Verifier not to contradict tool output, but did not mechanically reject an impossible `complete_fix` verdict.
+Per-case results:
+- case_001: `inconclusive` (wrong, 12.01s)
+- case_002: `inconclusive` (wrong, 72.30s)
+- case_003: `partial_fix` (wrong, 21.74s)
+- case_004: `partial_fix` (wrong, 9.74s)
+- case_005: `inconclusive` (wrong, 41.81s)
+- case_006: `inconclusive` (wrong, 76.37s)
+- case_007: `inconclusive` (wrong, 9.92s)
+- case_008: `inconclusive` (wrong, 97.59s)
+- case_009: `partial_fix` (wrong, 9.83s)
+- case_010: `inconclusive` (correct, 14.38s)
 
-2. Batch evaluation had poor operational behavior: no per-case progress display, a long provider timeout, no partial checkpoint file, and a provider/validation failure could abort the entire batch.
+Aggregate result:
+- cases: 10
+- completed cases: 10
+- errors: 0
+- verdict accuracy: 10.0%
+- false acceptance rate: 0.0%
+- average runtime: 36.569s
 
-Fourth fix applied
-------------------
+Comparison
+----------
 
-Deterministic verdict gate:
-- Iteration 2 now computes explicit reasons that forbid `complete_fix`.
-- `complete_fix` is forbidden when the patched existing suite fails or times out.
-- `complete_fix` is forbidden when a generated reproduction fails on the original and the same test still fails on the patch.
-- these constraints are supplied to the Verifier before its model call;
-- after the model call, a deterministic post-check enforces the constraints even if the model ignores them;
-- a conflicting model `complete_fix` is conservatively converted to `inconclusive` rather than allowing approval;
-- `result.json` records the model-proposed verdict, final verdict, whether the gate overrode the model, and the exact constraint reasons.
+Frozen Baseline v1:
+- verdict accuracy: 10.0%
+- false acceptance rate: 57.1%
+- average runtime: 2.405s
 
-Batch robustness and observability:
-- `eval-advanced` now prints per-case progress such as `[1/10] case_001 ...` and a result/runtime line after each case;
-- each completed case is checkpointed to `cases.partial.jsonl` immediately;
-- provider/validation errors are recorded as per-case errors and the batch continues instead of losing all prior work;
-- the final summary reports completed cases, errors, and whether the evaluation completed cleanly;
-- batch metrics with errors are explicitly marked as not cleanly comparable until the errors are resolved.
+Advanced Iteration 1:
+- verdict accuracy: 40.0%
+- false acceptance rate: 28.6%
+- average runtime: 5.641s
 
-Provider latency control:
-- language-model request timeout is now configurable with `--llm-timeout` or `REFUTE_LLM_TIMEOUT`;
-- the CLI default is 30 seconds instead of an implicit 120-second provider wait;
-- Iteration 2 batch evaluation uses one Investigator/Verifier provider attempt per case so one stuck request cannot silently consume multiple long retries;
-- Reproducer attempts remain bounded and configurable.
+Advanced Iteration 2:
+- verdict accuracy: 10.0%
+- false acceptance rate: 0.0%
+- average runtime: 36.569s
 
-Automated coverage added:
-- a test now reproduces the exact failure class seen locally: generated test fails on original and patch, Verifier proposes `complete_fix`, deterministic gate must return `inconclusive` and record the override.
+Interpretation
+--------------
 
-Required local checks after pulling the fourth fix
--------------------------------------------------
+Iteration 2 is a genuine negative experiment rather than an improvement. Generated reproduction plus conservative evidence gating eliminated false acceptance in this ten-case run, but verdict accuracy collapsed back to 10.0% and runtime increased substantially.
 
-1. `git pull`
-2. `python -m pytest`
-3. `refute verify benchmark\case_001 --provider ollama --model qwen3:0.6b --iteration 2 --llm-timeout 30`
-4. `refute eval-advanced benchmark --provider ollama --model qwen3:0.6b --iteration 2 --llm-timeout 30`
+The main failure mode is now clear: the workflow equates `original reproduction test failed` with `reported bug reproduced`, even when the same generated test also fails on the patched version. Such a test may be malformed, over-constrained, assert the wrong behavior, or fail for an unrelated reason. It is not discriminating evidence of the reported bug.
 
-Expected single-case correction:
-- if the generated reproduction again fails on both original and patch, the final verdict must NOT be `complete_fix`;
-- if the model nevertheless proposes `complete_fix`, the deterministic gate should return `inconclusive` and state that conflicting evidence must be resolved.
+Next engineering decision
+-------------------------
 
-Expected batch behavior:
-- visible `[n/10]` progress;
-- no silent multi-minute stall on one provider call beyond the configured request timeout;
-- partial progress saved to `artifacts/eval/advanced_iteration_2/cases.partial.jsonl`;
-- one failed case should not erase or abort already completed cases.
+Do not proceed to the Challenger yet.
 
-Frozen comparison points:
-- Baseline v1: 10.0% verdict accuracy, 57.1% false acceptance, 2.405s average runtime
-- Advanced Iteration 1: 40.0% verdict accuracy, 28.6% false acceptance, 5.641s average runtime
+First repair the Reproducer semantics:
+- a candidate should count as a successful/discriminating reproduction only when it fails on the original and passes on the patched version;
+- if it fails on both original and patch, classify it as `non_discriminating` and feed both execution results back into another bounded reproduction attempt instead of stopping;
+- if it passes on the original, classify it as `not_reproduced` and retry;
+- preserve all candidate code and both execution outputs as evidence;
+- expose reproduction outcome categories in `result.json` and evaluator reports;
+- keep the deterministic approval gate.
 
-Do not mark Iteration 2 complete until a clean local batch result is supplied by the human.
+This negative result must remain in the changelog/trajectory because it demonstrates that adding an agentic stage can reduce accuracy when the evidence semantics are wrong, even while improving safety.
