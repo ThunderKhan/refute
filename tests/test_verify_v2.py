@@ -92,7 +92,7 @@ def test_verify_v2_retries_until_original_bug_reproduces(tmp_path: Path):
     assert manifest["capabilities"]["bounded_reproduction_retry"] is True
     assert manifest["capabilities"]["generation_failure_recovery"] is True
     assert manifest["capabilities"]["deterministic_verdict_gate"] is True
-    assert manifest["challenger"] is False if "challenger" in manifest else True
+    assert manifest["capabilities"]["challenger"] is False
 
     evidence = (result.run_root / "evidence.jsonl").read_text(encoding="utf-8")
     assert "generated_test" in evidence
