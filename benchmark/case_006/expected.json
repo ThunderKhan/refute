@@ -1,0 +1,6 @@
+{
+  "case_id": "case_006",
+  "expected_verdict": "partial_fix",
+  "test_command": ["python", "-m", "pytest", "-q"],
+  "notes": "The patch handles ordinary limits but fails when the limit is smaller than the ellipsis length."
+}

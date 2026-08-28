@@ -1,0 +1,6 @@
+{
+  "case_id": "case_010",
+  "expected_verdict": "inconclusive",
+  "test_command": ["python", "-m", "pytest", "-q"],
+  "notes": "The available report is insufficient to establish that the proposed change addresses the intermittent failure."
+}

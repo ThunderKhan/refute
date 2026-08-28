@@ -1,0 +1,6 @@
+{
+  "case_id": "case_004",
+  "expected_verdict": "ineffective_fix",
+  "test_command": ["python", "-m", "pytest", "-q"],
+  "notes": "The patch changes syntax but leaves negative values unchanged."
+}

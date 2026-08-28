@@ -1,0 +1,6 @@
+{
+  "case_id": "case_005",
+  "expected_verdict": "complete_fix",
+  "test_command": ["python", "-m", "pytest", "-q"],
+  "notes": "The patch adds the missing lowercase normalization without changing the existing trim behavior."
+}

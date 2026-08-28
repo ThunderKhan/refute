@@ -1,0 +1,6 @@
+{
+  "case_id": "case_008",
+  "expected_verdict": "ineffective_fix",
+  "test_command": ["python", "-m", "pytest", "-q"],
+  "notes": "The patch changes the truthiness check to a length check but whitespace-only strings still pass."
+}

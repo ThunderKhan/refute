@@ -1,0 +1,6 @@
+{
+  "case_id": "case_007",
+  "expected_verdict": "regression_introduced",
+  "test_command": ["python", "-m", "pytest", "-q"],
+  "notes": "The patch fixes division by zero but catches every exception, suppressing TypeError for invalid operands."
+}

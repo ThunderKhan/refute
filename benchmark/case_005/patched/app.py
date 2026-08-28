@@ -1,0 +1,2 @@
+def canonical_email(value: str) -> str:
+    return value.strip().lower()
