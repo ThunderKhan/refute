@@ -1,0 +1,6 @@
+{
+  "case_id": "case_002",
+  "expected_verdict": "partial_fix",
+  "test_command": ["python", "-m", "pytest", "-q"],
+  "notes": "The patch fixes the reported lower boundary but still rejects 100, so the broader inclusive-range defect remains."
+}
