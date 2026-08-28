@@ -1,0 +1,16 @@
+{
+  "trace_id": "trace-005-reproduction-loop",
+  "project": "refute",
+  "round": "advanced_iteration_2",
+  "status": "pending_local_verification",
+  "human_instruction": "implement it",
+  "capabilities_added": [
+    "generated reproduction",
+    "bounded reproduction retry",
+    "original-first reproduction validation",
+    "same-test patched validation",
+    "reproduction evidence persistence"
+  ],
+  "secrets_included": false,
+  "historical_reconstruction": false
+}
