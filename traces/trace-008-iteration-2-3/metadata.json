@@ -1,0 +1,10 @@
+{
+  "trace_id": "trace-008-iteration-2-3",
+  "project": "refute",
+  "iteration": "2.3",
+  "status": "pending_local_verification",
+  "objective": "Move deterministic pytest failure-set analysis before generated reproduction and skip unnecessary model calls.",
+  "provider_for_planned_evaluation": "ollama",
+  "model_for_planned_evaluation": "qwen3:0.6b",
+  "contains_hidden_chain_of_thought": false
+}
