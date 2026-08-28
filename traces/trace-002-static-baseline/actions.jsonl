@@ -1,0 +1,12 @@
+{"step":1,"actor":"human","action":"instruction","result":"Implement the next step: a static-review baseline before advanced verification.","source":"conversation"}
+{"step":2,"actor":"agent","action":"inspect","target":"core models, CLI and benchmark loader","result":"Confirmed where the baseline could be added without using runtime execution.","source":"conversation"}
+{"step":3,"actor":"agent","action":"implement","target":"src/refute/llm.py","result":"Added local Ollama and generic OpenAI-compatible provider support using the Python standard library.","source":"github"}
+{"step":4,"actor":"agent","action":"implement","target":"src/refute/baseline.py","result":"Added static diff construction, strict baseline prompt, structured JSON parsing and artifact persistence.","source":"github"}
+{"step":5,"actor":"agent","action":"implement","target":"src/refute/cli.py","result":"Exposed refute baseline <case> with provider and model selection.","source":"github"}
+{"step":6,"actor":"agent","action":"test_design","target":"tests/test_baseline.py","result":"Added fake-model tests so baseline plumbing is testable without network access or credentials.","source":"github"}
+{"step":7,"actor":"agent","action":"decision","result":"Keep the baseline intentionally static: issue report plus code diff only; do not execute tests or leak expected verdicts.","source":"conversation"}
+{"step":8,"actor":"human","action":"test","target":"python -m pytest","result":"12 passed in 3.33s.","source":"human_verification"}
+{"step":9,"actor":"human","action":"run","target":"refute baseline benchmark\\case_001 --provider ollama --model qwen3:0.6b","result":"Predicted partial_fix for ground-truth complete_fix.","source":"human_verification"}
+{"step":10,"actor":"human","action":"run","target":"refute baseline benchmark\\case_002 --provider ollama --model qwen3:0.6b","result":"Predicted complete_fix for ground-truth partial_fix.","source":"human_verification"}
+{"step":11,"actor":"human","action":"run","target":"refute baseline benchmark\\case_003 --provider ollama --model qwen3:0.6b","result":"Predicted partial_fix for ground-truth regression_introduced.","source":"human_verification"}
+{"step":12,"actor":"agent","action":"analysis","result":"Recorded 0/3 as an early seed-set signal only and avoided treating it as the final benchmark claim.","source":"conversation"}
