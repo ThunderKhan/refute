@@ -1,0 +1,25 @@
+{
+  "trace_id": "trace-002-static-baseline",
+  "project": "refute",
+  "round": "Static-review baseline",
+  "status": "verified_locally",
+  "repository": "ThunderKhan/refute",
+  "source_commit_range": {
+    "base": "d099e74",
+    "head": "7b83be2"
+  },
+  "agent_role": "coding agent",
+  "model_used_for_runtime_baseline": "qwen3:0.6b",
+  "verification": {
+    "pytest": "12 passed in 3.33s",
+    "seed_case_results": {
+      "case_001": "expected complete_fix, predicted partial_fix",
+      "case_002": "expected partial_fix, predicted complete_fix",
+      "case_003": "expected regression_introduced, predicted partial_fix"
+    }
+  },
+  "privacy": {
+    "contains_credentials": false,
+    "contains_private_third_party_code": false
+  }
+}
