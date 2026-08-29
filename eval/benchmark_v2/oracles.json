@@ -1,0 +1,12 @@
+{
+  "case_001": "complete_fix",
+  "case_002": "partial_fix",
+  "case_003": "regression_introduced",
+  "case_004": "ineffective_fix",
+  "case_005": "complete_fix",
+  "case_006": "partial_fix",
+  "case_007": "regression_introduced",
+  "case_008": "ineffective_fix",
+  "case_009": "complete_fix",
+  "case_010": "inconclusive"
+}
