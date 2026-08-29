@@ -1,24 +1,34 @@
-Verification status: PENDING LOCAL RUN
+Verification status: BLOCKED BY LOCAL OLLAMA SERVICE
 
-Required local checks:
-1. git pull
-2. python -m pytest
-3. refute verify benchmark\case_001 --provider ollama --model qwen3:0.6b --iteration 2.3 --llm-timeout 30
-4. refute verify benchmark\case_002 --provider ollama --model qwen3:0.6b --iteration 2.3 --llm-timeout 30
-5. refute eval-advanced benchmark --provider ollama --model qwen3:0.6b --iteration 2.3 --llm-timeout 30
+The human attempted the required Iteration 2.3 local checks with `qwen3:0.6b`, but the Ollama HTTP service was not accepting connections.
 
-Expected behavior:
-- Iteration 2.3 runs the existing original/patched suites before deciding whether generated reproduction is useful.
-- CLI prints a deterministic test-delta classification and counts of fixed/remaining/new failures.
-- Cases with mechanically decisive failure-set deltas can skip generated reproduction and the final semantic verifier.
-- case_002 should be a useful smoke test for deterministic partial-progress classification.
-- suite-repaired or otherwise ambiguous cases may still invoke generated reproduction and the semantic verifier.
+Observed single-case failures for both case_001 and case_002:
 
-Separate aggregate artifacts:
-- artifacts/eval/advanced_iteration_2_3/summary.json
-- artifacts/eval/advanced_iteration_2_3/cases.jsonl
-- artifacts/eval/advanced_iteration_2_3/report.md
-- artifacts/eval/advanced_iteration_2_3/cases.partial.jsonl
+`investigator failed after 2 provider attempts: could not reach language-model provider: <urlopen error [WinError 10061] No connection could be made because the target machine actively refused it>`
+
+The ten-case batch then completed operationally but every case failed at the Investigator provider call after roughly two seconds each:
+- completed cases: 0
+- errors: 10
+- reported accuracy: 0.0% (NOT a model/architecture result)
+- false acceptance rate: 0.0% (NOT comparable)
+- average runtime: 2.031s (provider-refusal timing only, NOT comparable)
+
+Interpretation:
+- WinError 10061 means the configured Ollama endpoint actively refused the TCP connection; this is different from an LLM generation timeout or a refute verification-logic failure.
+- Because the Investigator is required before the deterministic test-delta stage in the current 2.3 implementation, no meaningful 2.3 benchmark evidence was produced.
+- Do not record the 0% result as an Iteration 2.3 metric and do not compare the 2.031s runtime with prior iterations.
+
+Required recovery before rerunning:
+1. confirm the local Ollama process/service is running;
+2. run `ollama list` and ensure it returns normally;
+3. if needed, start Ollama (`ollama serve` in a separate terminal, or launch the Ollama desktop app/service on Windows);
+4. rerun case_001 and case_002;
+5. only after both reach the refute pipeline, rerun the ten-case benchmark.
+
+Commands:
+`refute verify benchmark\case_001 --provider ollama --model qwen3:0.6b --iteration 2.3 --llm-timeout 30`
+`refute verify benchmark\case_002 --provider ollama --model qwen3:0.6b --iteration 2.3 --llm-timeout 30`
+`refute eval-advanced benchmark --provider ollama --model qwen3:0.6b --iteration 2.3 --llm-timeout 30`
 
 Frozen comparison points:
 - Baseline v1: 10.0% accuracy, 57.1% false acceptance, 2.405s average runtime
@@ -27,4 +37,4 @@ Frozen comparison points:
 - Iteration 2.1: 40.0% accuracy, 0.0% false acceptance, 52.584s average runtime
 - Iteration 2.2: 30.0% accuracy, 0.0% false acceptance, 50.863s average runtime
 
-Do not claim Iteration 2.3 improvement until the human supplies the local results.
+Do not claim Iteration 2.3 improvement until a clean local run is supplied.
