@@ -1,4 +1,4 @@
-Verification status: VERIFIED LOCALLY; BASELINE V2 FROZEN
+Verification status: VERIFIED LOCALLY; BASELINE V2 AND ITERATION 2.4 ABLATION FROZEN
 
 Human verification supplied on 2026-08-29:
 
@@ -44,11 +44,50 @@ Human verification supplied on 2026-08-29:
    - artifacts/eval/baseline_v2/cases.jsonl
    - artifacts/eval/baseline_v2/report.md
 
+6. Frozen Advanced Iteration 2.4 Benchmark v2 ablation
+   Command:
+   `refute eval-advanced benchmark_v2 --oracle-root eval\benchmark_v2 --provider ollama --model qwen3:0.6b --iteration 2.4 --llm-timeout 30`
+
+   Per-case result:
+   - case_001 -> complete_fix (correct, 0.90s)
+   - case_002 -> complete_fix (wrong, 0.99s)
+   - case_003 -> complete_fix (wrong, 1.07s)
+   - case_004 -> ineffective_fix (correct, 1.09s)
+   - case_005 -> complete_fix (correct, 0.89s)
+   - case_006 -> complete_fix (wrong, 0.87s)
+   - case_007 -> complete_fix (wrong, 0.87s)
+   - case_008 -> ineffective_fix (correct, 0.93s)
+   - case_009 -> complete_fix (correct, 0.88s)
+   - case_010 -> inconclusive (correct, 0.82s)
+
+   Aggregate result:
+   - mode: advanced iteration 2.4 benchmark v2
+   - model: qwen3:0.6b
+   - cases: 10
+   - oracle separated: yes
+   - completed cases: 10
+   - errors: 0
+   - verdict accuracy: 60.0%
+   - false acceptance rate: 57.1%
+   - average runtime: 0.929s/case
+
+   Aggregate artifacts:
+   - artifacts/eval/advanced_iteration_2_4_benchmark_v2/summary.json
+   - artifacts/eval/advanced_iteration_2_4_benchmark_v2/cases.jsonl
+   - artifacts/eval/advanced_iteration_2_4_benchmark_v2/report.md
+   - artifacts/eval/advanced_iteration_2_4_benchmark_v2/cases.partial.jsonl
+
 Interpretation:
 - Benchmark v2 separation is functioning as intended.
-- The static baseline remains weak after oracle separation, with the same 10.0% accuracy and 57.1% false acceptance as Baseline v1, while runtime changes only slightly.
-- This first clean Baseline v2 result is now FROZEN. Do not tune or rerun the baseline to improve it after observing advanced Benchmark v2 results without explicit versioning.
-- Advanced Benchmark v2 comparisons must use this frozen Baseline v2, not Baseline v1.
+- The static baseline remains weak after oracle separation: 10.0% accuracy / 57.1% FAR / 2.527s.
+- Iteration 2.4 drops from 100.0% on Benchmark v1 to 60.0% on Benchmark v2, confirming that the v1 saturation depended on public-test leakage.
+- Iteration 2.4 remains a strong deterministic triage layer, but its FAR returns to 57.1% because it approves four patches whose reported trigger is fixed while a nearby hidden behavior remains broken or regressed.
+- The four false accepts are exactly the Challenger target cases: case_002 upper boundary, case_003 internal-space preservation, case_006 tiny-limit behavior, and case_007 invalid-operand exception preservation.
+- The Challenger must never receive evaluator oracle or hidden-test content. Its value must come from independently proposing nearby falsification cases from public material.
 
-Next experiment:
-Run Advanced Iteration 2.4 unchanged on Benchmark v2 with the separated oracle. This is an ablation check: if accuracy falls substantially from its 100% Benchmark v1 score, that confirms the prior saturation came from public-test leakage. Only after that measurement should Challenger capability be added.
+Frozen comparison points on Benchmark v2:
+- Baseline v2: 10.0% accuracy, 57.1% FAR, 2.527s average runtime.
+- Iteration 2.4 Benchmark v2: 60.0% accuracy, 57.1% FAR, 0.929s average runtime.
+
+Decision:
+Proceed to Challenger as the next capability experiment. Measure whether it reduces false acceptance and improves verdict accuracy on the exact same Benchmark v2 without exposing hidden evaluator material.
