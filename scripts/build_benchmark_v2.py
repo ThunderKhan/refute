@@ -23,9 +23,11 @@ PUBLIC_TESTS: dict[str, str] = {
 
 
 def build() -> None:
-    if OUTPUT.exists():
-        shutil.rmtree(OUTPUT)
-    OUTPUT.mkdir(parents=True)
+    OUTPUT.mkdir(parents=True, exist_ok=True)
+    # Generated cases are disposable; preserve tracked documentation such as README.md.
+    for old_case in OUTPUT.glob("case_*"):
+        if old_case.is_dir():
+            shutil.rmtree(old_case)
 
     for case_id, public_test in PUBLIC_TESTS.items():
         source = LEGACY / case_id
@@ -48,13 +50,6 @@ def build() -> None:
             json.dumps(metadata, indent=2) + "\n", encoding="utf-8"
         )
 
-    (OUTPUT / "README.md").write_text(
-        "# Benchmark v2\n\n"
-        "Public verification cases only. `case.json` intentionally contains no expected verdict. "
-        "Evaluator-only oracles and hidden tests live under `eval/benchmark_v2/` and are never passed "
-        "to refute agents. Regenerate this directory with `python scripts/build_benchmark_v2.py`.\n",
-        encoding="utf-8",
-    )
     print(f"built {len(PUBLIC_TESTS)} public cases under {OUTPUT}")
 
 
