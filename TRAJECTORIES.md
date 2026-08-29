@@ -58,7 +58,7 @@ Normalized trace: `traces/trace-005-reproduction-loop/`.
 
 Human instruction: `Start with 2.1 and fix the errors`.
 
-Only original FAIL + patch PASS now counts as a successful generated reproduction. The human verified `31 passed in 18.56s`; the ten-case run measured 40.0% accuracy, 0.0% false acceptance, and 52.584s average runtime. The experiment recovered accuracy but exposed that diagnostic generated tests could still pull semantic verdicts in unsupported directions.
+Only original FAIL + patch PASS now counts as a successful generated reproduction. The human verified `31 passed in 18.56s`; the ten-case run measured 40.0% accuracy, 0.0% false acceptance, and 52.584s average runtime.
 
 Normalized trace: `traces/trace-006-iteration-2-1/`.
 
@@ -68,7 +68,7 @@ Normalized trace: `traces/trace-006-iteration-2-1/`.
 
 Human instruction: `go ahead with 2.2`.
 
-Iteration 2.2 assigned confidence semantics to generated evidence and added a deterministic weighted-verdict gate plus stagnation stopping. The ten-case run measured 30.0% accuracy, 0.0% false acceptance, and 50.863s average runtime. Safety held, but accuracy and runtime showed that the workflow still paid too much for model reasoning when deterministic evidence already contained useful structure.
+Iteration 2.2 assigned confidence semantics to generated evidence and added a deterministic weighted-verdict gate plus stagnation stopping. The ten-case run measured 30.0% accuracy, 0.0% false acceptance, and 50.863s average runtime.
 
 Normalized trace: `traces/trace-007-iteration-2-2/`.
 
@@ -78,7 +78,7 @@ Normalized trace: `traces/trace-007-iteration-2-2/`.
 
 Human instruction: `here you go I guess it needs fixing if it does go ahead`.
 
-Iteration 2.3 introduced deterministic comparison of original/patched pytest failure identifiers. It resolved observed partial, ineffective, and regression cases without extra verifier calls and reduced average runtime to 11.657s, but one Investigator timeout left only 9/10 cases complete and suite-repaired cases still used unnecessary semantic calls.
+Iteration 2.3 introduced deterministic comparison of original/patched pytest failure identifiers. It reduced average runtime to 11.657s, but one Investigator timeout left only 9/10 cases complete and suite-repaired cases still used unnecessary semantic calls.
 
 Normalized trace: `traces/trace-008-iteration-2-3/`.
 
@@ -86,11 +86,9 @@ Normalized trace: `traces/trace-008-iteration-2-3/`.
 
 ## trajectory-009 — Advanced Iteration 2.4: test-first routing
 
-Human instruction: local Iteration 2.3 outputs showed 50.0% accuracy, 0.0% false acceptance, 11.657s average runtime, and one Investigator timeout; the coding agent was asked to continue fixing the architecture.
+Iteration 2.4 moved deterministic original/patched execution before any agent call. The human verified `43 passed in 35.58s` and a clean Benchmark v1 run at 100.0% accuracy, 0.0% false acceptance, and 1.019s average runtime.
 
-Iteration 2.4 moved deterministic original/patched execution before any agent call. Mechanically decisive cases return without Investigator, Reproducer, or Verifier. The human verified `43 passed in 35.58s` and a clean ten-case Benchmark v1 run at 100.0% accuracy, 0.0% false acceptance, and 1.019s average runtime.
-
-That apparent perfect result became a benchmark diagnostic rather than a final claim: all ten cases were solved without agent calls, proving Benchmark v1 exposed the oracle through its public tests.
+That apparent perfect result became a benchmark diagnostic: all ten cases were solved without agent calls, proving Benchmark v1 exposed too much oracle information through public tests.
 
 Normalized trace: `traces/trace-009-iteration-2-4/`.
 
@@ -100,13 +98,27 @@ Normalized trace: `traces/trace-009-iteration-2-4/`.
 
 Human instruction: `okay do it`.
 
-The benchmark was redesigned before Challenger work. Public cases now use `case.json` with no expected verdict. Expected verdicts and hidden nearby/boundary/regression tests moved to evaluator-only material under `eval/benchmark_v2/`. The loader rejects inline oracle leakage, evaluators accept an explicit `--oracle-root`, and Benchmark v2 reports use separate artifact directories.
+The benchmark was redesigned before Challenger work. Public cases use `case.json` with no expected verdict. Expected verdicts and hidden nearby/boundary/regression tests are evaluator-only under `eval/benchmark_v2/`. A builder produces ten narrow public reported-trigger cases and an audit checks the separation.
 
-A reproducible builder creates ten public cases from the frozen v1 implementations with narrow reported-trigger tests. A separation audit verifies the intended public execution shapes and evaluator-only hidden behavior. Representative partial/regression cases deliberately look repaired on the public trigger while hidden tests retain the broader oracle.
+The human verified `48 passed in 31.98s`, a successful ten-case build, and `AUDIT PASSED`. Frozen Baseline v2 measured 10.0% accuracy, 57.1% FAR, and 2.527s average runtime. Iteration 2.4 then dropped from 100.0% on Benchmark v1 to **60.0% accuracy / 57.1% FAR / 0.929s** on Benchmark v2, confirming the previous saturation came from public-test leakage.
 
-Local tests, benchmark build/audit, and the first Baseline v2 run are pending. That first clean Baseline v2 result must be frozen before Challenger implementation.
+Its four false `complete_fix` verdicts were the intended nearby-failure cases: upper boundary, internal-space preservation, tiny truncation limits, and exception specificity.
 
 Normalized trace: `traces/trace-010-benchmark-v2/`.
+
+---
+
+## trajectory-011 — Advanced Iteration 3: Challenger
+
+Human instruction: `okay go ahead`.
+
+Iteration 3 adds an explicit adversarial Challenger after the Benchmark v2 ablation. Deterministic public tests still run first. Mechanically decisive cases remain on the cheap path; only patches whose public reported trigger changes from FAIL to PASS enter the challenge path.
+
+The Investigator frames expected behavior and risk areas from public issue text and patch diff. The Challenger then proposes one to three nearby pytest falsification cases without access to evaluator oracles or hidden tests. Each challenge executes on both original and patch. Original PASS + patch FAIL is classified as executable regression evidence; original FAIL + patch FAIL after the public trigger was repaired is classified as remaining-bug evidence supporting `partial_fix`. Timeouts and pytest exit codes 2+ are explicitly invalid evidence.
+
+The evaluator now reports challenged cases, candidate count, executable counterexamples, and Challenger case yield. Tests cover parser safety plus synthetic partial-fix and regression discovery scenarios. Local verification and the Benchmark v2 measurement are pending; no improvement claim is made yet.
+
+Normalized trace: `traces/trace-011-iteration-3/`.
 
 ---
 
