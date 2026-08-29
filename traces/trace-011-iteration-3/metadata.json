@@ -1,0 +1,13 @@
+{
+  "trace_id": "trace-011-iteration-3",
+  "engineering_round": "Advanced Iteration 3 Challenger",
+  "status": "pending_local_verification",
+  "benchmark": "Benchmark v2 oracle-separated",
+  "frozen_comparison": {
+    "iteration_2_4_accuracy": 0.60,
+    "iteration_2_4_false_acceptance_rate": 0.571,
+    "iteration_2_4_average_runtime_seconds": 0.929
+  },
+  "oracle_visible_to_agents": false,
+  "hidden_tests_visible_to_agents": false
+}
