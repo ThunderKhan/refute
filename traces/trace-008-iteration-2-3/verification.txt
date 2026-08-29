@@ -1,40 +1,53 @@
-Verification status: BLOCKED BY LOCAL OLLAMA SERVICE
+Verification status: CLEAN RUN WITH ONE PROVIDER ERROR
 
-The human attempted the required Iteration 2.3 local checks with `qwen3:0.6b`, but the Ollama HTTP service was not accepting connections.
+The human reran Iteration 2.3 after restoring Ollama and supplied successful case-level and batch outputs using local `qwen3:0.6b` with `--llm-timeout 30`.
 
-Observed single-case failures for both case_001 and case_002:
+Case-level checks:
 
-`investigator failed after 2 provider attempts: could not reach language-model provider: <urlopen error [WinError 10061] No connection could be made because the target machine actively refused it>`
+case_001:
+- original tests: FAIL
+- patched tests: PASS
+- test delta: suite_repaired
+- observed failures: fixed=1 remaining=0 new=0
+- reproduction attempts: 2
+- discriminating reproduction found: no
+- semantic verifier called: yes
+- verdict: inconclusive
 
-The ten-case batch then completed operationally but every case failed at the Investigator provider call after roughly two seconds each:
-- completed cases: 0
-- errors: 10
-- reported accuracy: 0.0% (NOT a model/architecture result)
-- false acceptance rate: 0.0% (NOT comparable)
-- average runtime: 2.031s (provider-refusal timing only, NOT comparable)
+case_002:
+- original tests: FAIL
+- patched tests: FAIL
+- test delta: partial_progress
+- observed failures: fixed=1 remaining=1 new=0
+- reproduction attempts: 0
+- semantic verifier called: no
+- verdict: partial_fix
+
+Ten-case batch:
+- case_001: inconclusive, wrong, 18.18s
+- case_002: partial_fix, correct, 4.10s
+- case_003: regression_introduced, correct, 3.06s
+- case_004: ineffective_fix, correct, 3.43s
+- case_005: inconclusive, wrong, 13.60s
+- case_006: partial_fix, correct, 4.74s
+- case_007: Investigator timeout after 30.07s
+- case_008: ineffective_fix, correct, 5.72s
+- case_009: inconclusive, wrong, 12.93s
+- case_010: partial_fix, wrong, 20.73s
+
+Aggregate:
+- cases: 10
+- completed cases: 9
+- errors: 1
+- verdict accuracy: 50.0%
+- false acceptance rate: 0.0%
+- average runtime: 11.657s/case
 
 Interpretation:
-- WinError 10061 means the configured Ollama endpoint actively refused the TCP connection; this is different from an LLM generation timeout or a refute verification-logic failure.
-- Because the Investigator is required before the deterministic test-delta stage in the current 2.3 implementation, no meaningful 2.3 benchmark evidence was produced.
-- Do not record the 0% result as an Iteration 2.3 metric and do not compare the 2.031s runtime with prior iterations.
+- deterministic test deltas materially improved both accuracy and runtime versus Iteration 2.2;
+- partial/ineffective/regression cases often resolved in roughly 3-6 seconds without Reproducer/Verifier calls;
+- a remaining architectural flaw is that the Investigator still runs before deterministic suite evidence, so a provider timeout can block an otherwise mechanically resolvable case (`case_007`);
+- suite-repaired cases still pay for semantic calls and tend toward inconclusive even though the existing failing tests become clean;
+- this motivates Iteration 2.4 test-first routing.
 
-Required recovery before rerunning:
-1. confirm the local Ollama process/service is running;
-2. run `ollama list` and ensure it returns normally;
-3. if needed, start Ollama (`ollama serve` in a separate terminal, or launch the Ollama desktop app/service on Windows);
-4. rerun case_001 and case_002;
-5. only after both reach the refute pipeline, rerun the ten-case benchmark.
-
-Commands:
-`refute verify benchmark\case_001 --provider ollama --model qwen3:0.6b --iteration 2.3 --llm-timeout 30`
-`refute verify benchmark\case_002 --provider ollama --model qwen3:0.6b --iteration 2.3 --llm-timeout 30`
-`refute eval-advanced benchmark --provider ollama --model qwen3:0.6b --iteration 2.3 --llm-timeout 30`
-
-Frozen comparison points:
-- Baseline v1: 10.0% accuracy, 57.1% false acceptance, 2.405s average runtime
-- Iteration 1: 40.0% accuracy, 28.6% false acceptance, 5.641s average runtime
-- Iteration 2: 10.0% accuracy, 0.0% false acceptance, 36.569s average runtime
-- Iteration 2.1: 40.0% accuracy, 0.0% false acceptance, 52.584s average runtime
-- Iteration 2.2: 30.0% accuracy, 0.0% false acceptance, 50.863s average runtime
-
-Do not claim Iteration 2.3 improvement until a clean local run is supplied.
+Do not treat the 50.0% result as a clean comparable final score because one case had a provider error. Preserve it as measured evidence of the routing improvement and remaining failure mode.
