@@ -1,19 +1,72 @@
-Verification status: PENDING LOCAL RUN
+Verification status: COMPLETE — benchmark saturated
 
-Required local checks:
-1. git pull
-2. python -m pytest
-3. refute verify benchmark\case_001 --provider ollama --model qwen3:0.6b --iteration 2.4 --llm-timeout 30
-4. refute verify benchmark\case_007 --provider ollama --model qwen3:0.6b --iteration 2.4 --llm-timeout 30
-5. refute verify benchmark\case_010 --provider ollama --model qwen3:0.6b --iteration 2.4 --llm-timeout 30
-6. refute eval-advanced benchmark --provider ollama --model qwen3:0.6b --iteration 2.4 --llm-timeout 30
+Local verification supplied by the human:
 
-Expected signals:
-- mechanically decisive cases should print `investigator called: no` and `semantic verifier called: no`;
-- case_001 should resolve from suite repair without generated reproduction;
-- case_007 should no longer be vulnerable to an Investigator timeout before deterministic regression evidence;
-- case_010 should remain inconclusive if both original and patched suites pass;
-- aggregate artifacts go under artifacts/eval/advanced_iteration_2_4/.
+1. `python -m pytest`
+   - observed: `43 passed in 35.58s`
+   - an earlier typo `python -m pytets` failed with `No module named pytets`; this was corrected immediately and is not a code failure.
 
-Benchmark caveat:
-If 2.4 nearly saturates the current ten cases without agent calls, treat that as evidence the benchmark public tests expose too much of the oracle. Do not present that score as the final agentic improvement. Redesign with public reproduction tests and hidden evaluation oracles before Challenger work.
+2. `refute verify benchmark\case_001 --provider ollama --model qwen3:0.6b --iteration 2.4 --llm-timeout 30`
+   - original tests: FAIL (exit 1)
+   - patched tests: PASS
+   - test delta: `suite_repaired`
+   - fixed=1, remaining=0, new=0
+   - reproduction attempts: 0
+   - investigator called: no
+   - semantic verifier called: no
+   - verdict: `complete_fix`
+
+3. `case_007`
+   - original tests: FAIL
+   - patched tests: FAIL
+   - test delta: `new_regressions`
+   - fixed=1, remaining=0, new=1
+   - reproduction attempts: 0
+   - investigator called: no
+   - semantic verifier called: no
+   - verdict: `regression_introduced`
+
+4. `case_010`
+   - original tests: PASS
+   - patched tests: PASS
+   - test delta: `both_pass`
+   - fixed=0, remaining=0, new=0
+   - reproduction attempts: 0
+   - investigator called: no
+   - semantic verifier called: no
+   - verdict: `inconclusive`
+
+Ten-case Iteration 2.4 benchmark with local Ollama `qwen3:0.6b`:
+- cases: 10
+- completed cases: 10
+- errors: 0
+- verdict accuracy: **100.0%**
+- false acceptance rate: **0.0%**
+- average runtime: **1.019s/case**
+
+Per-case results:
+- case_001 -> complete_fix, correct, 1.03s
+- case_002 -> partial_fix, correct, 1.03s
+- case_003 -> regression_introduced, correct, 0.95s
+- case_004 -> ineffective_fix, correct, 1.00s
+- case_005 -> complete_fix, correct, 1.08s
+- case_006 -> partial_fix, correct, 1.26s
+- case_007 -> regression_introduced, correct, 1.03s
+- case_008 -> ineffective_fix, correct, 1.01s
+- case_009 -> complete_fix, correct, 0.92s
+- case_010 -> inconclusive, correct, 0.88s
+
+Interpretation:
+- Iteration 2.4 proves the deterministic test-first routing is fast, robust, and correctly classifies this benchmark.
+- However, this is also a benchmark-design failure for the intended agentic evaluation: all ten cases are mechanically solvable from the public existing test-suite transitions, so the Investigator/Reproducer/Verifier are not needed at all.
+- Therefore **do not present 100.0% as the final agentic improvement claim**. It is evidence that benchmark v1 exposes too much oracle information through public tests.
+- The correct next step is benchmark v2 with public issue/reproduction evidence separated from hidden evaluator oracles, followed by rerunning Baseline and advanced iterations on exactly the same redesigned cases before adding the Challenger.
+
+Frozen comparison points on benchmark v1:
+- Baseline v1: 10.0% accuracy, 57.1% false acceptance, 2.405s average runtime
+- Iteration 1: 40.0% accuracy, 28.6% false acceptance, 5.641s average runtime
+- Iteration 2: 10.0% accuracy, 0.0% false acceptance, 36.569s average runtime
+- Iteration 2.1: 40.0% accuracy, 0.0% false acceptance, 52.584s average runtime
+- Iteration 2.2: 30.0% accuracy, 0.0% false acceptance, 50.863s average runtime
+- Iteration 2.3: 50.0% evaluator accuracy, 0.0% false acceptance, 11.657s average runtime, but only 9/10 completed due one Investigator timeout
+- Iteration 2.4: 100.0% accuracy, 0.0% false acceptance, 1.019s average runtime — benchmark-saturation result, not a valid final agentic score
