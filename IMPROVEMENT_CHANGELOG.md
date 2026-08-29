@@ -46,45 +46,29 @@ Result:
 - false acceptance rate: **0.0%**
 - average runtime: **52.584s/case**
 
-Observed failure: non-discriminating generated tests could still influence unsupported negative verdicts, and retry cost became excessive.
-
 Decision: keep discriminating semantics, but weight evidence and reduce wasted retries.
 
 ## Advanced Iteration 2.2 — evidence weighting + stagnation stop
-
-Hypothesis: confidence weighting plus early stagnation stopping will preserve safety while improving grounding and runtime.
 
 Result:
 - verdict accuracy: **30.0%**
 - false acceptance rate: **0.0%**
 - average runtime: **50.863s/case**
 
-Observed behavior: safety remained strong, but accuracy regressed and runtime barely improved. The workflow still paid for model reasoning even when existing pytest results already contained useful mechanical deltas.
-
 Decision: move deterministic suite analysis earlier.
 
 ## Advanced Iteration 2.3 — deterministic test-delta engine + conditional reproduction
 
-Hypothesis: mechanically comparing pytest failure identifiers between original and patched suites will resolve observed partial/ineffective/regression outcomes more accurately and cheaply, while reserving generated reproduction for suite-repaired or ambiguous cases.
-
-Result from the clean local run:
+Result:
 - completed cases: **9/10**
 - errors: **1** (`case_007` Investigator timeout)
-- verdict accuracy: **50.0%** over the ten-case evaluator output
+- verdict accuracy: **50.0%**
 - false acceptance rate: **0.0%**
 - average runtime: **11.657s/case**
 
 Decision: keep the test-delta engine, but move deterministic execution ahead of the Investigator.
 
 ## Advanced Iteration 2.4 — test-first routing
-
-Hypothesis: route deterministic execution before any agent call. Resolve mechanically decisive cases without the Investigator, Reproducer, or Verifier; invoke agents only for genuinely ambiguous deltas.
-
-Local verification:
-- `python -m pytest`: **43 passed in 35.58s**;
-- `case_001`: deterministic `complete_fix`, no Investigator/Reproducer/Verifier;
-- `case_007`: deterministic `regression_introduced`, no Investigator/Reproducer/Verifier;
-- `case_010`: deterministic `inconclusive`, no Investigator/Reproducer/Verifier.
 
 Benchmark v1 result:
 - completed cases: **10/10**
@@ -93,68 +77,71 @@ Benchmark v1 result:
 - false acceptance rate: **0.0%**
 - average runtime: **1.019s/case**
 
-Interpretation: this is **not** a valid final agentic improvement result. Iteration 2.4 solved all ten cases without agent calls, demonstrating that Benchmark v1 exposes enough oracle information through its public test suite for deterministic before/after failure analysis to reconstruct the expected verdicts.
+Interpretation: this is not a valid final agentic improvement result because every case was solved without agent calls. Benchmark v1 exposed too much oracle information through public tests.
 
 Decision: preserve 2.4 as a systems-engineering and benchmark-diagnostic result, but do not use its 100.0% as the final hackathon agentic claim.
 
 ## Benchmark v2 — oracle separation
 
-Hypothesis: separating public reported-bug evidence from evaluator-only ground truth will prevent deterministic suite analysis from reading the answer directly and make semantic/adversarial agent capability measurable again.
-
-Implemented design:
-- public cases use `case.json`, which contains case identity and public test command but **cannot contain `expected_verdict`**;
-- `VerificationCase.expected_verdict` is optional so oracle-free cases can flow through the verification pipeline without ground truth;
-- the case loader rejects an inline oracle in public `case.json`;
-- evaluator-only verdicts live in `eval/benchmark_v2/oracles.json`;
-- evaluator-only nearby/boundary/regression tests live in `eval/benchmark_v2/hidden_tests.json`;
-- `scripts/build_benchmark_v2.py` reproducibly builds ten public cases from the frozen v1 implementations while replacing the overexposing test suites with narrow reported-trigger tests;
-- baseline and advanced evaluators accept `--oracle-root` and resolve the oracle only after the verification result exists;
-- Benchmark v2 reports are written separately (`baseline_v2`, `advanced_iteration_*_benchmark_v2`) so v1 measurements cannot be overwritten;
-- generated public case directories are ignored by Git because they are reproducibly derived artifacts; the builder and evaluator-only oracle material are tracked.
-
-Representative separation:
-- `case_002`: public lower-boundary test is repaired by the patch, while hidden upper-boundary test retains the `partial_fix` oracle;
-- `case_003`: public surrounding-whitespace test is repaired, while hidden internal-space preservation exposes the regression;
-- `case_007`: public division-by-zero behavior is repaired, while hidden invalid-operand behavior exposes the overly broad exception handler;
-- `case_010`: public deterministic behavior passes on both versions and the oracle remains `inconclusive` because the intermittent report is not reproduced.
+Public cases use `case.json` with no expected verdict. Evaluator-only verdicts and hidden tests live under `eval/benchmark_v2/`; the loader rejects inline oracle leakage and reports use separate artifact directories.
 
 Local verification:
 - `python -m pytest`: **48 passed in 31.98s**;
-- `python scripts/build_benchmark_v2.py`: built **10** public cases;
+- builder produced **10** public cases;
 - separation audit: **PASSED**;
-- `refute inspect benchmark_v2\case_002`: oracle withheld, original FAIL, patch PASS.
+- `case_002` publicly shows original FAIL / patch PASS while its broader oracle remains withheld.
 
 ### Frozen Baseline v2
 
-First clean run on the oracle-separated benchmark:
-- model: `qwen3:0.6b`
-- cases: **10**
-- oracle separated: **yes**
 - verdict accuracy: **10.0%**
 - false acceptance rate: **57.1%**
 - average runtime: **2.527s/case**
 
-Decision: **freeze Baseline v2 at 10.0% accuracy / 57.1% FAR / 2.527s average runtime.** Do not tune or rerun the baseline to improve it after seeing advanced Benchmark v2 outcomes without explicit versioning.
+Decision: freeze this first clean Baseline v2 result.
 
-### Iteration 2.4 ablation on Benchmark v2
+### Frozen Iteration 2.4 ablation on Benchmark v2
 
-Iteration 2.4 was rerun unchanged against the separated-oracle benchmark.
-
-Result:
 - completed cases: **10/10**
 - errors: **0**
 - verdict accuracy: **60.0%**
 - false acceptance rate: **57.1%**
 - average runtime: **0.929s/case**
 
-Case pattern:
-- correct: `case_001`, `case_004`, `case_005`, `case_008`, `case_009`, `case_010`;
-- false `complete_fix`: `case_002` (hidden upper boundary), `case_003` (hidden internal-space regression), `case_006` (hidden tiny-limit failure), `case_007` (hidden invalid-operand regression).
+Four false `complete_fix` verdicts remained:
+- `case_002`: upper-boundary failure;
+- `case_003`: internal-space regression;
+- `case_006`: tiny-limit failure;
+- `case_007`: invalid-operand regression.
 
-Interpretation:
-- the drop from **100.0% on Benchmark v1 to 60.0% on Benchmark v2** confirms that the prior saturation depended on public-test leakage;
-- the deterministic engine remains useful as cheap triage, but it cannot detect nearby failures that are absent from public tests;
-- false acceptance returning to **57.1%**, exactly matching the frozen static Baseline v2 FAR, exposes the core missing capability: active falsification beyond the reported trigger;
-- the four misses are deliberately the cases where a Challenger should add value by proposing boundary, invariant-preservation, small-limit, or exception-specificity tests.
+Interpretation: the drop from 100.0% on Benchmark v1 to 60.0% on Benchmark v2 confirms the previous saturation came from public-test leakage. These four misses define the missing capability: active falsification beyond the reported trigger.
 
-Decision: **freeze Iteration 2.4 Benchmark v2 at 60.0% accuracy / 57.1% FAR / 0.929s average runtime.** Proceed to Challenger as the next measured capability. Challenger must not see `eval/benchmark_v2/oracles.json` or `eval/benchmark_v2/hidden_tests.json`; it must propose nearby tests only from public issue, code/diff, and observed public evidence.
+## Advanced Iteration 3 — Challenger
+
+Hypothesis: after a public reported-trigger test changes from FAIL on original to PASS on patch, an agent that actively proposes nearby issue-grounded falsification cases can recover hidden partial fixes and regressions without seeing evaluator-only hidden tests or verdicts.
+
+Implemented workflow:
+- deterministic public original/patched tests still run first;
+- mechanically decisive partial/ineffective/regression outcomes retain the Iteration 2.4 fast path;
+- only a `suite_repaired` public delta enters the agentic challenge path;
+- Investigator summarizes expected behavior and risk areas from public issue + diff;
+- Challenger generates **1–3** nearby pytest cases focused on boundaries, preserved invariants, small-limit behavior, and exception specificity;
+- generated tests use the existing conservative safety validator and cannot use network/shell/destructive operations;
+- every challenge runs on both original and patch;
+- original PASS + patch FAIL is executable regression evidence;
+- original FAIL + patch FAIL after the public trigger was repaired is executable remaining-bug evidence and maps to `partial_fix`;
+- invalid pytest execution (timeout or exit code 2+) is never treated as semantic counterexample evidence;
+- if all valid Challenger cases pass on the patch, the bounded search returns `complete_fix`; if no valid decisive challenge exists, it remains `inconclusive`;
+- oracle and hidden-test files are never loaded by `verify_case_v3`.
+
+New evaluation metrics:
+- challenged cases;
+- challenge candidates executed;
+- challenge counterexamples;
+- Challenger case yield = challenged cases with at least one executable counterexample / challenged cases.
+
+Target against frozen Benchmark v2 Iteration 2.4:
+- accuracy **> 60.0%**;
+- false acceptance rate **< 57.1%**;
+- useful counterexamples on the deliberately hidden nearby-failure cases.
+
+Status: **implementation complete; local pytest, targeted cases, and Benchmark v2 run pending.** Do not claim an Iteration 3 improvement until the local measurement is supplied.
