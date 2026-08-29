@@ -21,7 +21,14 @@ Secrets, credentials, API keys, private third-party content, and unrelated perso
 |---|---|---|
 | `trace-001-milestone-1` | Deterministic verification spine | verified locally |
 | `trace-002-static-baseline` | Static LLM review baseline | verified locally |
-| `trace-003-evaluator-architecture` | Batch evaluator + architecture backbone | implementation complete; baseline experiment verified |
+| `trace-003-evaluator-architecture` | Batch evaluator + architecture backbone | baseline experiment verified |
+| `trace-004-advanced-iteration-1` | Investigator + runtime evidence | verified locally |
+| `trace-005-reproduction-loop` | Generated reproduction + recovery | verified locally |
+| `trace-006-iteration-2-1` | Discriminating reproduction semantics | verified locally |
+| `trace-007-iteration-2-2` | Evidence weighting + stagnation stop | verified locally |
+| `trace-008-iteration-2-3` | Deterministic test-delta engine | verified locally; one benchmark provider error |
+| `trace-009-iteration-2-4` | Test-first routing + benchmark diagnosis | verified locally |
+| `trace-010-benchmark-v2` | Oracle-separated Benchmark v2 redesign | pending local verification + Baseline v2 |
 
 ## Normalized event format
 
@@ -42,4 +49,4 @@ This is intentionally provider-neutral so the traces can be transformed later wi
 
 ## Source commit ranges
 
-Each trace's `metadata.json` records a source commit range. The actual repository diff remains available from Git history and is not duplicated here unless a later acquisition format explicitly requires a patch file.
+Each trace's `metadata.json` may record a source commit range when known. The actual repository diff remains available from Git history and is not duplicated here unless a later acquisition format explicitly requires a patch file.
