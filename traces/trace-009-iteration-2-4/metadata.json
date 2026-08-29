@@ -1,0 +1,8 @@
+{
+  "trace_id": "trace-009-iteration-2-4",
+  "project": "refute",
+  "iteration": "2.4",
+  "status": "pending_local_verification",
+  "goal": "route deterministic evidence before optional agent calls",
+  "safety": "no credentials or private data recorded"
+}
