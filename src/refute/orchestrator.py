@@ -22,7 +22,11 @@ _ALLOWED_TRANSITIONS: dict[RunStage, set[RunStage]] = {
     # Earlier iterations investigate first. Test-first iterations may execute the
     # cheap deterministic suites before deciding whether an agent call is useful.
     RunStage.LOADED: {RunStage.INVESTIGATED, RunStage.ORIGINAL_VERIFIED},
-    RunStage.INVESTIGATED: {RunStage.REPRODUCTION_ATTEMPTED, RunStage.ORIGINAL_VERIFIED},
+    RunStage.INVESTIGATED: {
+        RunStage.REPRODUCTION_ATTEMPTED,
+        RunStage.ORIGINAL_VERIFIED,
+        RunStage.CHALLENGED,
+    },
     RunStage.REPRODUCTION_ATTEMPTED: {RunStage.ORIGINAL_VERIFIED, RunStage.REGRESSION_CHECKED},
     RunStage.ORIGINAL_VERIFIED: {RunStage.PATCH_VERIFIED},
     RunStage.PATCH_VERIFIED: {
