@@ -1,0 +1,12 @@
+{
+  "case_001": "from app import clamp_percentage\n\n\ndef test_upper_boundary_still_valid():\n    assert clamp_percentage(100) == 100\n\n\ndef test_out_of_range_values_still_rejected():\n    for value in (-1, 101):\n        try:\n            clamp_percentage(value)\n        except ValueError:\n            pass\n        else:\n            raise AssertionError(f'{value} should be rejected')\n",
+  "case_002": "from app import normalize_percentage\n\n\ndef test_upper_boundary_is_inclusive():\n    assert normalize_percentage(100) == 100\n",
+  "case_003": "from app import format_username\n\n\ndef test_internal_spaces_are_preserved():\n    assert format_username(' Mary Jane ') == 'mary jane'\n",
+  "case_004": "from app import magnitude\n\n\ndef test_other_negative_values_become_positive():\n    assert magnitude(-1) == 1\n    assert magnitude(-99) == 99\n",
+  "case_005": "from app import canonical_email\n\n\ndef test_lowercase_and_trim_are_both_preserved():\n    assert canonical_email('  person@example.com  ') == 'person@example.com'\n    assert canonical_email('ADMIN@EXAMPLE.COM') == 'admin@example.com'\n",
+  "case_006": "from app import truncate\n\n\ndef test_tiny_limits_never_overflow():\n    for limit in (0, 1, 2):\n        assert len(truncate('abcdef', limit)) <= limit\n",
+  "case_007": "import pytest\nfrom app import safe_divide\n\n\ndef test_invalid_operands_still_raise_type_error():\n    with pytest.raises(TypeError):\n        safe_divide('x', 2)\n",
+  "case_008": "from app import first_nonempty\n\n\ndef test_whitespace_only_values_are_skipped():\n    assert first_nonempty(['   ', '\\t', 'value']) == 'value'\n",
+  "case_009": "from app import slugify\n\n\ndef test_mixed_whitespace_collapses_to_one_separator():\n    assert slugify('  Hello\\tBeautiful\\nWorld  ') == 'hello-beautiful-world'\n",
+  "case_010": "from app import Cache\n\n\ndef test_known_sequential_behavior_is_not_the_reported_intermittent_failure():\n    cache = Cache()\n    cache.update('x', 1)\n    cache.update('x', 2)\n    assert cache.get('x') == 2\n"
+}
