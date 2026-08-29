@@ -136,4 +136,25 @@ First clean run on the oracle-separated benchmark:
 
 Decision: **freeze Baseline v2 at 10.0% accuracy / 57.1% FAR / 2.527s average runtime.** Do not tune or rerun the baseline to improve it after seeing advanced Benchmark v2 outcomes without explicit versioning.
 
-Next experiment: run Advanced Iteration 2.4 unchanged on Benchmark v2 using the separated oracle. This is an ablation check. If its Benchmark v2 score drops substantially from the 100.0% Benchmark v1 result, that directly confirms the earlier saturation came from public-test leakage. Challenger work starts only after this measurement is frozen.
+### Iteration 2.4 ablation on Benchmark v2
+
+Iteration 2.4 was rerun unchanged against the separated-oracle benchmark.
+
+Result:
+- completed cases: **10/10**
+- errors: **0**
+- verdict accuracy: **60.0%**
+- false acceptance rate: **57.1%**
+- average runtime: **0.929s/case**
+
+Case pattern:
+- correct: `case_001`, `case_004`, `case_005`, `case_008`, `case_009`, `case_010`;
+- false `complete_fix`: `case_002` (hidden upper boundary), `case_003` (hidden internal-space regression), `case_006` (hidden tiny-limit failure), `case_007` (hidden invalid-operand regression).
+
+Interpretation:
+- the drop from **100.0% on Benchmark v1 to 60.0% on Benchmark v2** confirms that the prior saturation depended on public-test leakage;
+- the deterministic engine remains useful as cheap triage, but it cannot detect nearby failures that are absent from public tests;
+- false acceptance returning to **57.1%**, exactly matching the frozen static Baseline v2 FAR, exposes the core missing capability: active falsification beyond the reported trigger;
+- the four misses are deliberately the cases where a Challenger should add value by proposing boundary, invariant-preservation, small-limit, or exception-specificity tests.
+
+Decision: **freeze Iteration 2.4 Benchmark v2 at 60.0% accuracy / 57.1% FAR / 0.929s average runtime.** Proceed to Challenger as the next measured capability. Challenger must not see `eval/benchmark_v2/oracles.json` or `eval/benchmark_v2/hidden_tests.json`; it must propose nearby tests only from public issue, code/diff, and observed public evidence.
