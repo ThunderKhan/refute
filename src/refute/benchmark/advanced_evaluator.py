@@ -15,6 +15,7 @@ from ..verify_v22 import verify_case_v22
 from ..verify_v23 import verify_case_v23
 from ..verify_v24 import verify_case_v24
 from .evaluator import discover_cases
+from .oracle import expected_verdict_for_case
 
 
 @dataclass(frozen=True, slots=True)
@@ -44,6 +45,10 @@ def _iteration_slug(iteration: str) -> str:
     return iteration.replace(".", "_")
 
 
+def _is_oracle_separated(case_dirs: list[Path]) -> bool:
+    return bool(case_dirs) and all((case / "case.json").is_file() for case in case_dirs)
+
+
 def evaluate_advanced(
     benchmark_root: str | Path,
     llm: LLM,
@@ -56,15 +61,17 @@ def evaluate_advanced(
     max_reproduction_attempts: int = 3,
     max_provider_attempts: int = 1,
     progress: bool = False,
+    oracle_root: str | Path | None = None,
 ) -> dict:
     iteration_name = _normalize_iteration(iteration)
-
     case_dirs = discover_cases(benchmark_root)
+    oracle_separated = _is_oracle_separated(case_dirs)
     results: list[AdvancedCaseEvaluation] = []
     total_cases = len(case_dirs)
 
     for index, case_dir in enumerate(case_dirs, start=1):
         case = load_case(case_dir)
+        expected = expected_verdict_for_case(case, oracle_root)
         if progress:
             print(f"[{index}/{total_cases}] {case.case_id} ...", flush=True)
         started = time.perf_counter()
@@ -125,9 +132,9 @@ def evaluate_advanced(
             duration = time.perf_counter() - started
             item = AdvancedCaseEvaluation(
                 case_id=case.case_id,
-                expected=case.expected_verdict.value,
+                expected=expected.value,
                 predicted=result.verdict.value,
-                correct=result.verdict is case.expected_verdict,
+                correct=result.verdict is expected,
                 runtime_seconds=duration,
                 reason=result.reason,
                 run_id=result.run_id,
@@ -139,7 +146,7 @@ def evaluate_advanced(
             duration = time.perf_counter() - started
             item = AdvancedCaseEvaluation(
                 case_id=case.case_id,
-                expected=case.expected_verdict.value,
+                expected=expected.value,
                 predicted="error",
                 correct=False,
                 runtime_seconds=duration,
@@ -151,15 +158,37 @@ def evaluate_advanced(
                 print(f"         ERROR after {duration:.2f}s: {exc}", flush=True)
 
         results.append(item)
-        _write_checkpoint(results, Path(artifacts_root), iteration_name)
+        _write_checkpoint(
+            results,
+            Path(artifacts_root),
+            iteration_name,
+            oracle_separated=oracle_separated,
+        )
 
-    summary = _summarize(results, provider_name, model_name, iteration_name)
-    _write_reports(summary, results, Path(artifacts_root), iteration_name)
+    summary = _summarize(
+        results,
+        provider_name,
+        model_name,
+        iteration_name,
+        oracle_separated=oracle_separated,
+    )
+    _write_reports(
+        summary,
+        results,
+        Path(artifacts_root),
+        iteration_name,
+        oracle_separated=oracle_separated,
+    )
     return summary
 
 
 def _summarize(
-    results: list[AdvancedCaseEvaluation], provider: str, model: str, iteration: str
+    results: list[AdvancedCaseEvaluation],
+    provider: str,
+    model: str,
+    iteration: str,
+    *,
+    oracle_separated: bool,
 ) -> dict:
     total = len(results)
     correct = sum(item.correct for item in results)
@@ -199,8 +228,9 @@ def _summarize(
     }
 
     return {
-        "mode": f"advanced_iteration_{_iteration_slug(iteration)}",
+        "mode": f"advanced_iteration_{_iteration_slug(iteration)}" + ("_benchmark_v2" if oracle_separated else ""),
         "iteration": iteration,
+        "benchmark_oracle_separated": oracle_separated,
         "provider": provider,
         "model": model,
         "cases": total,
@@ -218,8 +248,11 @@ def _summarize(
     }
 
 
-def _root(artifacts_root: Path, iteration: str) -> Path:
-    root = artifacts_root.resolve() / "eval" / f"advanced_iteration_{_iteration_slug(iteration)}"
+def _root(artifacts_root: Path, iteration: str, *, oracle_separated: bool) -> Path:
+    name = f"advanced_iteration_{_iteration_slug(iteration)}"
+    if oracle_separated:
+        name += "_benchmark_v2"
+    root = artifacts_root.resolve() / "eval" / name
     root.mkdir(parents=True, exist_ok=True)
     return root
 
@@ -228,8 +261,10 @@ def _write_checkpoint(
     results: list[AdvancedCaseEvaluation],
     artifacts_root: Path,
     iteration: str,
+    *,
+    oracle_separated: bool,
 ) -> None:
-    root = _root(artifacts_root, iteration)
+    root = _root(artifacts_root, iteration, oracle_separated=oracle_separated)
     with (root / "cases.partial.jsonl").open("w", encoding="utf-8") as handle:
         for item in results:
             handle.write(json.dumps(asdict(item), sort_keys=True) + "\n")
@@ -240,8 +275,10 @@ def _write_reports(
     results: list[AdvancedCaseEvaluation],
     artifacts_root: Path,
     iteration: str,
+    *,
+    oracle_separated: bool,
 ) -> None:
-    root = _root(artifacts_root, iteration)
+    root = _root(artifacts_root, iteration, oracle_separated=oracle_separated)
     (root / "summary.json").write_text(json.dumps(summary, indent=2) + "\n", encoding="utf-8")
     with (root / "cases.jsonl").open("w", encoding="utf-8") as handle:
         for item in results:
@@ -255,14 +292,12 @@ def _write_reports(
     elif iteration == "2.3":
         capability_text = (
             "Investigator + deterministic pytest failure-set delta analysis + conditional generated reproduction + "
-            "discriminating semantics. Deterministic observed deltas can resolve partial/ineffective/regression cases "
-            "without an extra verifier call. No Challenger cases."
+            "discriminating semantics. No Challenger cases."
         )
     elif iteration == "2.2":
         capability_text = (
             "Investigator + existing-test execution + generated reproduction with bounded retry + "
-            "discriminating semantics + confidence weighting + stagnation stop + deterministic verdict gate. "
-            "No Challenger cases."
+            "discriminating semantics + confidence weighting + stagnation stop + deterministic verdict gate. No Challenger cases."
         )
     elif iteration == "2.1":
         capability_text = (
@@ -271,13 +306,11 @@ def _write_reports(
         )
     elif iteration == "2":
         capability_text = (
-            "Investigator + existing-test execution + generated reproduction with bounded retry + "
-            "deterministic verdict gate. No Challenger cases."
+            "Investigator + existing-test execution + generated reproduction with bounded retry + deterministic verdict gate. No Challenger cases."
         )
     else:
         capability_text = (
-            "Investigator + existing-test execution + evidence-constrained verifier. "
-            "No generated reproduction or Challenger."
+            "Investigator + existing-test execution + evidence-constrained verifier. No generated reproduction or Challenger."
         )
 
     lines = [
@@ -286,6 +319,7 @@ def _write_reports(
         f"- Provider: `{summary['provider']}`",
         f"- Model: `{summary['model']}`",
         f"- Cases: {summary['cases']}",
+        f"- Oracle separated: {'yes' if summary['benchmark_oracle_separated'] else 'no'}",
         f"- Completed cases: {summary['completed_cases']}",
         f"- Errors: {summary['errors']}",
         f"- Verdict accuracy: {summary['verdict_accuracy']:.1%}",
