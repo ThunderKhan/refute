@@ -39,7 +39,7 @@ def load_case(case_dir: str | Path) -> VerificationCase:
         oracle_is_inline = True
     else:
         raise CaseFormatError(
-            f"missing required metadata file: expected {public_metadata_path.name} or {legacy_metadata_path.name}"
+            f"missing required file: expected {public_metadata_path.name} or {legacy_metadata_path.name}"
         )
 
     if not issue_path.is_file():
