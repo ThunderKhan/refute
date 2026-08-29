@@ -21,9 +21,11 @@ class VerificationCase:
     issue_path: Path
     original_path: Path
     patched_path: Path
-    expected_verdict: Verdict
     test_command: tuple[str, ...]
     notes: str = ""
+    # Legacy benchmark cases carry their oracle inline. Benchmark v2 deliberately
+    # leaves this unset so the verification pipeline cannot access ground truth.
+    expected_verdict: Verdict | None = None
 
     @property
     def issue_text(self) -> str:
