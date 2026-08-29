@@ -9,6 +9,7 @@ from ..baseline import run_baseline
 from ..case import load_case
 from ..llm import LLM
 from ..models import Verdict
+from .oracle import expected_verdict_for_case
 
 
 @dataclass(frozen=True, slots=True)
@@ -26,12 +27,18 @@ def discover_cases(root: str | Path) -> list[Path]:
     if not root_path.is_dir():
         raise ValueError(f"benchmark directory does not exist: {root_path}")
     cases = sorted(
-        path for path in root_path.iterdir()
-        if path.is_dir() and (path / "expected.json").is_file()
+        path
+        for path in root_path.iterdir()
+        if path.is_dir()
+        and ((path / "case.json").is_file() or (path / "expected.json").is_file())
     )
     if not cases:
         raise ValueError(f"no benchmark cases found under: {root_path}")
     return cases
+
+
+def _is_oracle_separated(cases: list[Path]) -> bool:
+    return bool(cases) and all((case / "case.json").is_file() for case in cases)
 
 
 def evaluate_baseline(
@@ -41,33 +48,46 @@ def evaluate_baseline(
     artifacts_root: str | Path = "artifacts",
     provider_name: str = "unknown",
     model_name: str = "unknown",
+    oracle_root: str | Path | None = None,
 ) -> dict:
     cases = discover_cases(benchmark_root)
+    oracle_separated = _is_oracle_separated(cases)
     results: list[CaseEvaluation] = []
 
     for case_dir in cases:
         case = load_case(case_dir)
+        expected = expected_verdict_for_case(case, oracle_root)
         started = time.perf_counter()
         baseline = run_baseline(case, llm, artifacts_root)
         duration = time.perf_counter() - started
         results.append(
             CaseEvaluation(
                 case_id=case.case_id,
-                expected=case.expected_verdict.value,
+                expected=expected.value,
                 predicted=baseline.verdict.value,
-                correct=baseline.verdict is case.expected_verdict,
+                correct=baseline.verdict is expected,
                 runtime_seconds=duration,
                 reason=baseline.reason,
             )
         )
 
-    summary = _summarize(results, provider_name, model_name)
-    _write_reports(summary, results, Path(artifacts_root))
+    summary = _summarize(
+        results,
+        provider_name,
+        model_name,
+        oracle_separated=oracle_separated,
+    )
+    report_name = "baseline_v2" if oracle_separated else "baseline"
+    _write_reports(summary, results, Path(artifacts_root), report_name)
     return summary
 
 
 def _summarize(
-    results: list[CaseEvaluation], provider_name: str, model_name: str
+    results: list[CaseEvaluation],
+    provider_name: str,
+    model_name: str,
+    *,
+    oracle_separated: bool,
 ) -> dict:
     total = len(results)
     correct = sum(item.correct for item in results)
@@ -104,7 +124,8 @@ def _summarize(
     }
 
     return {
-        "mode": "static_baseline",
+        "mode": "static_baseline_v2" if oracle_separated else "static_baseline",
+        "benchmark_oracle_separated": oracle_separated,
         "provider": provider_name,
         "model": model_name,
         "cases": total,
@@ -119,8 +140,13 @@ def _summarize(
     }
 
 
-def _write_reports(summary: dict, results: list[CaseEvaluation], artifacts_root: Path) -> None:
-    report_root = artifacts_root.resolve() / "eval" / "baseline"
+def _write_reports(
+    summary: dict,
+    results: list[CaseEvaluation],
+    artifacts_root: Path,
+    report_name: str,
+) -> None:
+    report_root = artifacts_root.resolve() / "eval" / report_name
     report_root.mkdir(parents=True, exist_ok=True)
 
     (report_root / "summary.json").write_text(
@@ -130,12 +156,14 @@ def _write_reports(summary: dict, results: list[CaseEvaluation], artifacts_root:
         for item in results:
             handle.write(json.dumps(asdict(item), sort_keys=True) + "\n")
 
+    title = "Baseline v2 Evaluation" if summary["benchmark_oracle_separated"] else "Baseline Evaluation"
     lines = [
-        "# Baseline Evaluation",
+        f"# {title}",
         "",
         f"- Provider: `{summary['provider']}`",
         f"- Model: `{summary['model']}`",
         f"- Cases: {summary['cases']}",
+        f"- Oracle separated: {'yes' if summary['benchmark_oracle_separated'] else 'no'}",
         f"- Verdict accuracy: {summary['verdict_accuracy']:.1%}",
         f"- False acceptance rate: {summary['false_acceptance_rate']:.1%}",
         f"- Average runtime: {summary['average_runtime_seconds']:.3f}s",
