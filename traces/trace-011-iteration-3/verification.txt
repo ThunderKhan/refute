@@ -1,0 +1,24 @@
+Verification status: PENDING LOCAL RUN
+
+Required checks:
+1. git pull
+2. python -m pytest
+3. python scripts/build_benchmark_v2.py
+4. refute verify benchmark_v2\case_002 --provider ollama --model qwen3:0.6b --iteration 3 --llm-timeout 30
+5. refute verify benchmark_v2\case_003 --provider ollama --model qwen3:0.6b --iteration 3 --llm-timeout 30
+6. refute verify benchmark_v2\case_001 --provider ollama --model qwen3:0.6b --iteration 3 --llm-timeout 30
+7. refute eval-advanced benchmark_v2 --oracle-root eval\benchmark_v2 --provider ollama --model qwen3:0.6b --iteration 3 --llm-timeout 30
+
+Expected signals:
+- case_002 public suite is repaired, so Investigator and Challenger should be called; a useful upper-boundary challenge should classify as remaining_bug_counterexample and support partial_fix.
+- case_003 public suite is repaired; a useful internal-space challenge should pass original and fail patch, classifying regression_counterexample.
+- case_001 is a true complete fix; valid nearby challenges should survive on the patch rather than manufacture a counterexample.
+- the batch output should include challenger case yield and challenge counterexample count.
+- artifacts must be isolated under artifacts/eval/advanced_iteration_3_benchmark_v2/.
+- evaluator-only hidden_tests.json and oracles.json must not be used by verify_case_v3.
+
+Frozen Benchmark v2 comparison:
+- Baseline v2: 10.0% accuracy, 57.1% FAR, 2.527s average runtime.
+- Iteration 2.4: 60.0% accuracy, 57.1% FAR, 0.929s average runtime.
+
+Do not claim Iteration 3 improvement until a clean local batch run is supplied.
