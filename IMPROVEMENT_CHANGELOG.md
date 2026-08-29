@@ -118,14 +118,22 @@ Representative separation:
 - `case_007`: public division-by-zero behavior is repaired, while hidden invalid-operand behavior exposes the overly broad exception handler;
 - `case_010`: public deterministic behavior passes on both versions and the oracle remains `inconclusive` because the intermittent report is not reproduced.
 
-Status: **implementation complete; local test/build and Baseline v2 measurement pending**.
+Local verification:
+- `python -m pytest`: **48 passed in 31.98s**;
+- `python scripts/build_benchmark_v2.py`: built **10** public cases;
+- separation audit: **PASSED**;
+- `refute inspect benchmark_v2\case_002`: oracle withheld, original FAIL, patch PASS.
 
-Required next measurement:
+### Frozen Baseline v2
 
-```powershell
-python -m pytest
-python scripts/build_benchmark_v2.py
-refute eval-baseline benchmark_v2 --oracle-root eval\benchmark_v2 --provider ollama --model qwen3:0.6b --llm-timeout 30
-```
+First clean run on the oracle-separated benchmark:
+- model: `qwen3:0.6b`
+- cases: **10**
+- oracle separated: **yes**
+- verdict accuracy: **10.0%**
+- false acceptance rate: **57.1%**
+- average runtime: **2.527s/case**
 
-Decision rule: freeze the first clean Baseline v2 result on these exact public cases and oracles. Do not tune it after seeing advanced Benchmark v2 results. Do not add Challenger behavior until this baseline is frozen.
+Decision: **freeze Baseline v2 at 10.0% accuracy / 57.1% FAR / 2.527s average runtime.** Do not tune or rerun the baseline to improve it after seeing advanced Benchmark v2 outcomes without explicit versioning.
+
+Next experiment: run Advanced Iteration 2.4 unchanged on Benchmark v2 using the separated oracle. This is an ablation check. If its Benchmark v2 score drops substantially from the 100.0% Benchmark v1 result, that directly confirms the earlier saturation came from public-test leakage. Challenger work starts only after this measurement is frozen.
