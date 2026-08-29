@@ -57,6 +57,12 @@ def build_parser() -> argparse.ArgumentParser:
     eval_parser.add_argument("benchmark_dir", type=Path)
     _add_provider_args(eval_parser)
     eval_parser.add_argument("--artifacts", type=Path, default=Path("artifacts"))
+    eval_parser.add_argument(
+        "--oracle-root",
+        type=Path,
+        default=None,
+        help="Evaluator-only oracle directory/file for benchmark cases whose case.json withholds expected_verdict.",
+    )
 
     verify_parser = subparsers.add_parser(
         "verify",
@@ -99,6 +105,12 @@ def build_parser() -> argparse.ArgumentParser:
         default=3,
         help="Maximum generated reproduction attempts per case for Iterations 2.x.",
     )
+    advanced_parser.add_argument(
+        "--oracle-root",
+        type=Path,
+        default=None,
+        help="Evaluator-only oracle directory/file for benchmark cases whose case.json withholds expected_verdict.",
+    )
 
     return parser
 
@@ -138,7 +150,10 @@ def main(argv: list[str] | None = None) -> int:
             parser.error(str(exc))
         result = inspect_case(case, args.artifacts, args.timeout)
         print(f"case: {case.case_id}")
-        print(f"expected verdict: {case.expected_verdict.value}")
+        print(
+            "expected verdict: "
+            + (case.expected_verdict.value if case.expected_verdict is not None else "withheld from public case")
+        )
         print()
         print(f"original: {_status(result.original)}")
         print(f"patched:  {_status(result.patched)}")
@@ -175,17 +190,21 @@ def main(argv: list[str] | None = None) -> int:
                 artifacts_root=args.artifacts,
                 provider_name=args.provider,
                 model_name=getattr(llm, "model", args.model or "unknown"),
+                oracle_root=args.oracle_root,
             )
         except (CaseFormatError, LLMError, ValueError) as exc:
             parser.error(str(exc))
-        print("mode: static baseline benchmark")
+        oracle_separated = summary.get("benchmark_oracle_separated", False)
+        print("mode: " + ("static baseline v2 benchmark" if oracle_separated else "static baseline benchmark"))
         print(f"model: {summary['model']}")
         print(f"cases: {summary['cases']}")
+        print(f"oracle separated: {'yes' if oracle_separated else 'no'}")
         print(f"verdict accuracy: {summary['verdict_accuracy']:.1%}")
         print(f"false acceptance rate: {summary['false_acceptance_rate']:.1%}")
         print(f"average runtime: {summary['average_runtime_seconds']:.3f}s")
         print()
-        root = args.artifacts.resolve() / "eval" / "baseline"
+        report_name = "baseline_v2" if oracle_separated else "baseline"
+        root = args.artifacts.resolve() / "eval" / report_name
         print("aggregate evidence:")
         print(f"  {root / 'summary.json'}")
         print(f"  {root / 'cases.jsonl'}")
@@ -293,13 +312,16 @@ def main(argv: list[str] | None = None) -> int:
                 max_reproduction_attempts=args.max_reproduction_attempts,
                 max_provider_attempts=1,
                 progress=True,
+                oracle_root=args.oracle_root,
             )
         except (CaseFormatError, LLMError, ValueError) as exc:
             parser.error(str(exc))
+        oracle_separated = summary.get("benchmark_oracle_separated", False)
         print()
-        print(f"mode: advanced iteration {args.iteration} benchmark")
+        print(f"mode: advanced iteration {args.iteration} benchmark" + (" v2" if oracle_separated else ""))
         print(f"model: {summary['model']}")
         print(f"cases: {summary['cases']}")
+        print(f"oracle separated: {'yes' if oracle_separated else 'no'}")
         print(f"completed cases: {summary['completed_cases']}")
         print(f"errors: {summary['errors']}")
         print(f"verdict accuracy: {summary['verdict_accuracy']:.1%}")
@@ -308,7 +330,10 @@ def main(argv: list[str] | None = None) -> int:
         if not summary["evaluation_complete"]:
             print("warning: evaluation contains provider/validation errors; inspect the report before comparing metrics")
         print()
-        root = args.artifacts.resolve() / "eval" / f"advanced_iteration_{_iteration_slug(args.iteration)}"
+        name = f"advanced_iteration_{_iteration_slug(args.iteration)}"
+        if oracle_separated:
+            name += "_benchmark_v2"
+        root = args.artifacts.resolve() / "eval" / name
         print("aggregate evidence:")
         print(f"  {root / 'summary.json'}")
         print(f"  {root / 'cases.jsonl'}")
