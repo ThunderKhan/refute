@@ -48,11 +48,7 @@ Normalized trace: `traces/trace-004-advanced-iteration-1/`.
 
 Human instruction: `implement it`.
 
-Iteration 2 added generated pytest reproduction, bounded execution-feedback retry, generated-test safety validation, provider/malformed-output recovery, a deterministic verdict gate, batch progress/checkpointing, and configurable LLM timeouts. During local validation, several real failures were preserved and fixed: malformed JSON, unusable model output, provider timeouts, a verifier contradiction, and slow opaque batch behavior.
-
-The final clean ten-case Iteration 2 run with `qwen3:0.6b` measured 10.0% verdict accuracy, 0.0% false acceptance, and 36.569s average runtime. This was a negative capability experiment: the system became safer against false approval but much less accurate and much slower.
-
-The key semantic flaw discovered was that a generated test failing on both original and patch was still labeled a successful reproduction. That finding directly motivated Iteration 2.1.
+Iteration 2 added generated pytest reproduction, bounded execution-feedback retry, generated-test safety validation, provider/malformed-output recovery, a deterministic verdict gate, batch progress/checkpointing, and configurable LLM timeouts. The final clean ten-case run measured 10.0% verdict accuracy, 0.0% false acceptance, and 36.569s average runtime. The main discovered flaw was that generated tests failing on both original and patch were treated as successful reproductions.
 
 Normalized trace: `traces/trace-005-reproduction-loop/`.
 
@@ -62,11 +58,7 @@ Normalized trace: `traces/trace-005-reproduction-loop/`.
 
 Human instruction: `Start with 2.1 and fix the errors`.
 
-Iteration 2.1 repaired the reproduction semantics: only **original FAIL + patch PASS** counts as a successful generated reproduction. Original FAIL + patch FAIL/timeout is non-discriminating and feeds both outputs back to the next attempt; original PASS/timeout is treated as not reproduced.
-
-The human verified `31 passed in 18.56s` and then ran the ten-case benchmark with `qwen3:0.6b`. Iteration 2.1 measured 40.0% verdict accuracy, 0.0% false acceptance, and 52.584s average runtime. This recovered Iteration 1's accuracy while retaining Iteration 2's zero false-acceptance result, but runtime became substantially worse.
-
-The single-case validation exposed another flaw: a non-discriminating generated test could still pull the model toward an unsupported negative verdict even though the patched deterministic suite passed. That finding motivated evidence weighting in Iteration 2.2.
+Only original FAIL + patch PASS now counts as a successful generated reproduction. The human verified `31 passed in 18.56s`; the ten-case run measured 40.0% accuracy, 0.0% false acceptance, and 52.584s average runtime. The experiment recovered accuracy but exposed that diagnostic generated tests could still pull semantic verdicts in unsupported directions.
 
 Normalized trace: `traces/trace-006-iteration-2-1/`.
 
@@ -76,16 +68,7 @@ Normalized trace: `traces/trace-006-iteration-2-1/`.
 
 Human instruction: `go ahead with 2.2`.
 
-Iteration 2.2 assigned explicit confidence semantics to generated evidence and added a deterministic weighted-verdict gate plus a stagnation stop.
-
-The human then ran a clean ten-case benchmark with `qwen3:0.6b`:
-- verdict accuracy: 30.0%
-- false acceptance rate: 0.0%
-- average runtime: 50.863s/case
-
-The targeted single-case behavior improved: diagnostic-only reproduction no longer justified an unsupported negative verdict. However, aggregate accuracy fell from 40.0% to 30.0%, and runtime barely improved from 52.584s to 50.863s. The main new conclusion was that the workflow still relied too heavily on the small semantic model even when the existing pytest suite already contained useful before/after failure structure.
-
-Decision: preserve 2.2 as measured evidence and move deterministic test-delta analysis before reproduction.
+Iteration 2.2 assigned confidence semantics to generated evidence and added a deterministic weighted-verdict gate plus stagnation stopping. The ten-case run measured 30.0% accuracy, 0.0% false acceptance, and 50.863s average runtime. Safety held, but accuracy and runtime showed that the workflow still paid too much for model reasoning when deterministic evidence already contained useful structure.
 
 Normalized trace: `traces/trace-007-iteration-2-2/`.
 
@@ -95,18 +78,35 @@ Normalized trace: `traces/trace-007-iteration-2-2/`.
 
 Human instruction: `here you go I guess it needs fixing if it does go ahead`.
 
-Iteration 2.3 changes the order of operations. After the Investigator, the original and patched suites run first. `refute` mechanically parses pytest failure identifiers and computes fixed, remaining, and newly failing test sets.
-
-Observed test deltas can now resolve some verdicts without another semantic model call:
-- newly failing tests -> `regression_introduced`;
-- fixed failures with remaining failures -> `partial_fix`;
-- unchanged named failures -> `ineffective_fix`.
-
-If the visible suite is fully repaired or otherwise ambiguous, generated reproduction remains available as a falsification step and the semantic verifier may still be called. Reproduction is capped at two attempts in this iteration. Earlier iterations remain unchanged for comparison.
-
-Local verification is pending and is recorded in `traces/trace-008-iteration-2-3/verification.txt`.
+Iteration 2.3 introduced deterministic comparison of original/patched pytest failure identifiers. It resolved observed partial, ineffective, and regression cases without extra verifier calls and reduced average runtime to 11.657s, but one Investigator timeout left only 9/10 cases complete and suite-repaired cases still used unnecessary semantic calls.
 
 Normalized trace: `traces/trace-008-iteration-2-3/`.
+
+---
+
+## trajectory-009 — Advanced Iteration 2.4: test-first routing
+
+Human instruction: local Iteration 2.3 outputs showed 50.0% accuracy, 0.0% false acceptance, 11.657s average runtime, and one Investigator timeout; the coding agent was asked to continue fixing the architecture.
+
+Iteration 2.4 moved deterministic original/patched execution before any agent call. Mechanically decisive cases return without Investigator, Reproducer, or Verifier. The human verified `43 passed in 35.58s` and a clean ten-case Benchmark v1 run at 100.0% accuracy, 0.0% false acceptance, and 1.019s average runtime.
+
+That apparent perfect result became a benchmark diagnostic rather than a final claim: all ten cases were solved without agent calls, proving Benchmark v1 exposed the oracle through its public tests.
+
+Normalized trace: `traces/trace-009-iteration-2-4/`.
+
+---
+
+## trajectory-010 — Benchmark v2 oracle separation
+
+Human instruction: `okay do it`.
+
+The benchmark was redesigned before Challenger work. Public cases now use `case.json` with no expected verdict. Expected verdicts and hidden nearby/boundary/regression tests moved to evaluator-only material under `eval/benchmark_v2/`. The loader rejects inline oracle leakage, evaluators accept an explicit `--oracle-root`, and Benchmark v2 reports use separate artifact directories.
+
+A reproducible builder creates ten public cases from the frozen v1 implementations with narrow reported-trigger tests. A separation audit verifies the intended public execution shapes and evaluator-only hidden behavior. Representative partial/regression cases deliberately look repaired on the public trigger while hidden tests retain the broader oracle.
+
+Local tests, benchmark build/audit, and the first Baseline v2 run are pending. That first clean Baseline v2 result must be frozen before Challenger implementation.
+
+Normalized trace: `traces/trace-010-benchmark-v2/`.
 
 ---
 
