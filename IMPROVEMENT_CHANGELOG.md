@@ -99,6 +99,33 @@ Changes:
 - provider outages can no longer block mechanically decisive cases;
 - separate `advanced_iteration_2_4` artifacts preserve the experiment.
 
-Result: **pending local verification and benchmark run**.
+Local verification:
+- `python -m pytest`: **43 passed in 35.58s**;
+- `case_001`: deterministic `complete_fix`, no Investigator/Reproducer/Verifier;
+- `case_007`: deterministic `regression_introduced`, no Investigator/Reproducer/Verifier;
+- `case_010`: deterministic `inconclusive`, no Investigator/Reproducer/Verifier.
 
-Important benchmark finding: if Iteration 2.4 nearly saturates the current ten cases without using agents, that is evidence the current benchmark exposes too much verdict information through public tests. In that event, do not treat the score as the final advanced-agent result; redesign the benchmark with public reproduction tests separated from hidden evaluation oracles before adding the Challenger.
+Benchmark v1 result:
+- completed cases: **10/10**
+- errors: **0**
+- verdict accuracy: **100.0%**
+- false acceptance rate: **0.0%**
+- average runtime: **1.019s/case**
+
+Interpretation: this is **not** a valid final agentic improvement result. Iteration 2.4 solved all ten cases without agent calls, which demonstrates that benchmark v1 exposes enough oracle information through its public test suite for deterministic before/after failure analysis to reconstruct the expected verdicts.
+
+Decision: preserve 2.4 as a successful systems-engineering experiment and a benchmark-diagnostic result, but do not use its 100.0% as the final hackathon agentic claim. Redesign the benchmark before adding the Challenger.
+
+## Next experiment — Benchmark v2 oracle separation
+
+Goal: make agent capability necessary and measurable rather than allowing the public test suite to reveal the answer mechanically.
+
+Planned structure:
+- public case material contains issue text, original/patched code, and only the reproduction tests/evidence the verifier is allowed to observe;
+- expected verdicts move out of the case directory into evaluator-only oracle files;
+- hidden evaluation tests cover nearby/boundary/regression behavior and are never exposed to Investigator/Reproducer/Challenger prompts or runtime during verification;
+- cases such as partial fixes and regressions should have public reported-bug reproduction that the patch passes, with hidden oracle behavior revealing incompleteness or regression only during evaluation;
+- rerun Baseline and selected advanced iterations on exactly the same redesigned cases before comparing them;
+- only then add the Challenger, which must discover useful nearby cases without seeing hidden oracle tests.
+
+This redesign is necessary for a fair agentic comparison and for measuring adversarial-case yield, regression detection, and verdict accuracy without benchmark leakage.
