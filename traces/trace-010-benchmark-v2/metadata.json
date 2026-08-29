@@ -1,0 +1,9 @@
+{
+  "trace_id": "trace-010-benchmark-v2",
+  "project": "refute",
+  "category": "benchmark-redesign",
+  "status": "pending-local-verification",
+  "human_checkpoint_required": true,
+  "contains_secrets": false,
+  "hidden_reasoning_included": false
+}
