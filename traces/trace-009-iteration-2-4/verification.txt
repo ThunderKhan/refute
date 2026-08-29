@@ -1,0 +1,19 @@
+Verification status: PENDING LOCAL RUN
+
+Required local checks:
+1. git pull
+2. python -m pytest
+3. refute verify benchmark\case_001 --provider ollama --model qwen3:0.6b --iteration 2.4 --llm-timeout 30
+4. refute verify benchmark\case_007 --provider ollama --model qwen3:0.6b --iteration 2.4 --llm-timeout 30
+5. refute verify benchmark\case_010 --provider ollama --model qwen3:0.6b --iteration 2.4 --llm-timeout 30
+6. refute eval-advanced benchmark --provider ollama --model qwen3:0.6b --iteration 2.4 --llm-timeout 30
+
+Expected signals:
+- mechanically decisive cases should print `investigator called: no` and `semantic verifier called: no`;
+- case_001 should resolve from suite repair without generated reproduction;
+- case_007 should no longer be vulnerable to an Investigator timeout before deterministic regression evidence;
+- case_010 should remain inconclusive if both original and patched suites pass;
+- aggregate artifacts go under artifacts/eval/advanced_iteration_2_4/.
+
+Benchmark caveat:
+If 2.4 nearly saturates the current ten cases without agent calls, treat that as evidence the benchmark public tests expose too much of the oracle. Do not present that score as the final agentic improvement. Redesign with public reproduction tests and hidden evaluation oracles before Challenger work.
