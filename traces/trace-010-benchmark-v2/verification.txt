@@ -1,20 +1,54 @@
-Verification status: PENDING LOCAL RUN
+Verification status: VERIFIED LOCALLY; BASELINE V2 FROZEN
 
-Required checks:
-1. git pull
-2. python -m pytest
-3. python scripts/build_benchmark_v2.py
-4. python scripts/audit_benchmark_v2.py
-5. refute inspect benchmark_v2\case_002
-6. refute eval-baseline benchmark_v2 --oracle-root eval\benchmark_v2 --provider ollama --model qwen3:0.6b --llm-timeout 30
+Human verification supplied on 2026-08-29:
 
-Expected structural checks:
-- public case.json contains no expected_verdict;
-- separation audit ends with `AUDIT PASSED`;
-- refute inspect on a public case prints `expected verdict: withheld from public case`;
-- case_002 public test shows original FAIL / patched PASS even though evaluator oracle is partial_fix;
-- partial/regression hidden tests remain outside the public case tree and fail on the relevant patched implementations;
-- Baseline v2 artifacts are written under artifacts/eval/baseline_v2/;
-- the first clean Baseline v2 result is frozen before any Challenger work.
+1. `python -m pytest`
+   - 48 passed in 31.98s
 
-Do not compare Benchmark v2 advanced results against Baseline v1 because the evidence available to the system changed.
+2. `python scripts/build_benchmark_v2.py`
+   - built 10 public cases under `benchmark_v2`
+
+3. `python scripts/audit_benchmark_v2.py`
+   - case_001: public original=FAIL patch=PASS | hidden patch=PASS
+   - case_002: public original=FAIL patch=PASS | hidden patch=FAIL
+   - case_003: public original=FAIL patch=PASS | hidden patch=FAIL
+   - case_004: public original=FAIL patch=FAIL | hidden patch=FAIL
+   - case_005: public original=FAIL patch=PASS | hidden patch=PASS
+   - case_006: public original=FAIL patch=PASS | hidden patch=FAIL
+   - case_007: public original=FAIL patch=PASS | hidden patch=FAIL
+   - case_008: public original=FAIL patch=FAIL | hidden patch=FAIL
+   - case_009: public original=FAIL patch=PASS | hidden patch=PASS
+   - case_010: public original=PASS patch=PASS | hidden patch=PASS
+   - final signal: `AUDIT PASSED: public cases are oracle-free and hidden behavior is separated as designed.`
+
+4. `refute inspect benchmark_v2\case_002`
+   - expected verdict: withheld from public case
+   - original: FAIL (exit 1)
+   - patched: PASS
+
+5. Frozen Baseline v2
+   Command:
+   `refute eval-baseline benchmark_v2 --oracle-root eval\benchmark_v2 --provider ollama --model qwen3:0.6b --llm-timeout 30`
+
+   Result:
+   - mode: static baseline v2 benchmark
+   - model: qwen3:0.6b
+   - cases: 10
+   - oracle separated: yes
+   - verdict accuracy: 10.0%
+   - false acceptance rate: 57.1%
+   - average runtime: 2.527s/case
+
+   Aggregate artifacts:
+   - artifacts/eval/baseline_v2/summary.json
+   - artifacts/eval/baseline_v2/cases.jsonl
+   - artifacts/eval/baseline_v2/report.md
+
+Interpretation:
+- Benchmark v2 separation is functioning as intended.
+- The static baseline remains weak after oracle separation, with the same 10.0% accuracy and 57.1% false acceptance as Baseline v1, while runtime changes only slightly.
+- This first clean Baseline v2 result is now FROZEN. Do not tune or rerun the baseline to improve it after observing advanced Benchmark v2 results without explicit versioning.
+- Advanced Benchmark v2 comparisons must use this frozen Baseline v2, not Baseline v1.
+
+Next experiment:
+Run Advanced Iteration 2.4 unchanged on Benchmark v2 with the separated oracle. This is an ablation check: if accuracy falls substantially from its 100% Benchmark v1 score, that confirms the prior saturation came from public-test leakage. Only after that measurement should Challenger capability be added.
