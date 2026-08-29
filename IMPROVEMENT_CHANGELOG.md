@@ -74,30 +74,11 @@ Result from the clean local run:
 - false acceptance rate: **0.0%**
 - average runtime: **11.657s/case**
 
-Observed case behavior:
-- `case_002` -> deterministic `partial_fix` in 4.10s;
-- `case_003` -> deterministic `regression_introduced` in 3.06s;
-- `case_004` -> deterministic `ineffective_fix` in 3.43s;
-- `case_006` -> deterministic `partial_fix` in 4.74s;
-- `case_008` -> deterministic `ineffective_fix` in 5.72s;
-- `case_007` still failed before deterministic evidence because the Investigator was invoked first and timed out;
-- suite-repaired cases (`case_001`, `case_005`, `case_009`) still paid for reproduction/verifier calls and often returned `inconclusive` despite all observed failing tests being repaired;
-- `case_010` remained semantically ambiguous.
-
-Decision: keep the test-delta engine, but move deterministic execution ahead of the Investigator. The observed suite itself should count as a discriminating executable witness when named failures disappear and no new failures appear. If both original and patched suites already pass, remain `inconclusive` rather than fabricate causality.
+Decision: keep the test-delta engine, but move deterministic execution ahead of the Investigator.
 
 ## Advanced Iteration 2.4 — test-first routing
 
 Hypothesis: route deterministic execution before any agent call. Resolve mechanically decisive cases without the Investigator, Reproducer, or Verifier; invoke agents only for genuinely ambiguous deltas.
-
-Changes:
-- original and patched suites execute before the Investigator;
-- deterministic partial/ineffective/regression deltas return immediately;
-- original FAIL -> patched PASS with observed fixed test IDs and no remaining/new failures returns `complete_fix` relative to the observed suite;
-- original PASS + patched PASS returns `inconclusive` because the reported bug was not reproduced by available deterministic evidence;
-- Investigator, generated reproduction, and semantic verifier become conditional fallback stages only;
-- provider outages can no longer block mechanically decisive cases;
-- separate `advanced_iteration_2_4` artifacts preserve the experiment.
 
 Local verification:
 - `python -m pytest`: **43 passed in 35.58s**;
@@ -112,20 +93,39 @@ Benchmark v1 result:
 - false acceptance rate: **0.0%**
 - average runtime: **1.019s/case**
 
-Interpretation: this is **not** a valid final agentic improvement result. Iteration 2.4 solved all ten cases without agent calls, which demonstrates that benchmark v1 exposes enough oracle information through its public test suite for deterministic before/after failure analysis to reconstruct the expected verdicts.
+Interpretation: this is **not** a valid final agentic improvement result. Iteration 2.4 solved all ten cases without agent calls, demonstrating that Benchmark v1 exposes enough oracle information through its public test suite for deterministic before/after failure analysis to reconstruct the expected verdicts.
 
-Decision: preserve 2.4 as a successful systems-engineering experiment and a benchmark-diagnostic result, but do not use its 100.0% as the final hackathon agentic claim. Redesign the benchmark before adding the Challenger.
+Decision: preserve 2.4 as a systems-engineering and benchmark-diagnostic result, but do not use its 100.0% as the final hackathon agentic claim.
 
-## Next experiment — Benchmark v2 oracle separation
+## Benchmark v2 — oracle separation
 
-Goal: make agent capability necessary and measurable rather than allowing the public test suite to reveal the answer mechanically.
+Hypothesis: separating public reported-bug evidence from evaluator-only ground truth will prevent deterministic suite analysis from reading the answer directly and make semantic/adversarial agent capability measurable again.
 
-Planned structure:
-- public case material contains issue text, original/patched code, and only the reproduction tests/evidence the verifier is allowed to observe;
-- expected verdicts move out of the case directory into evaluator-only oracle files;
-- hidden evaluation tests cover nearby/boundary/regression behavior and are never exposed to Investigator/Reproducer/Challenger prompts or runtime during verification;
-- cases such as partial fixes and regressions should have public reported-bug reproduction that the patch passes, with hidden oracle behavior revealing incompleteness or regression only during evaluation;
-- rerun Baseline and selected advanced iterations on exactly the same redesigned cases before comparing them;
-- only then add the Challenger, which must discover useful nearby cases without seeing hidden oracle tests.
+Implemented design:
+- public cases use `case.json`, which contains case identity and public test command but **cannot contain `expected_verdict`**;
+- `VerificationCase.expected_verdict` is optional so oracle-free cases can flow through the verification pipeline without ground truth;
+- the case loader rejects an inline oracle in public `case.json`;
+- evaluator-only verdicts live in `eval/benchmark_v2/oracles.json`;
+- evaluator-only nearby/boundary/regression tests live in `eval/benchmark_v2/hidden_tests.json`;
+- `scripts/build_benchmark_v2.py` reproducibly builds ten public cases from the frozen v1 implementations while replacing the overexposing test suites with narrow reported-trigger tests;
+- baseline and advanced evaluators accept `--oracle-root` and resolve the oracle only after the verification result exists;
+- Benchmark v2 reports are written separately (`baseline_v2`, `advanced_iteration_*_benchmark_v2`) so v1 measurements cannot be overwritten;
+- generated public case directories are ignored by Git because they are reproducibly derived artifacts; the builder and evaluator-only oracle material are tracked.
 
-This redesign is necessary for a fair agentic comparison and for measuring adversarial-case yield, regression detection, and verdict accuracy without benchmark leakage.
+Representative separation:
+- `case_002`: public lower-boundary test is repaired by the patch, while hidden upper-boundary test retains the `partial_fix` oracle;
+- `case_003`: public surrounding-whitespace test is repaired, while hidden internal-space preservation exposes the regression;
+- `case_007`: public division-by-zero behavior is repaired, while hidden invalid-operand behavior exposes the overly broad exception handler;
+- `case_010`: public deterministic behavior passes on both versions and the oracle remains `inconclusive` because the intermittent report is not reproduced.
+
+Status: **implementation complete; local test/build and Baseline v2 measurement pending**.
+
+Required next measurement:
+
+```powershell
+python -m pytest
+python scripts/build_benchmark_v2.py
+refute eval-baseline benchmark_v2 --oracle-root eval\benchmark_v2 --provider ollama --model qwen3:0.6b --llm-timeout 30
+```
+
+Decision rule: freeze the first clean Baseline v2 result on these exact public cases and oracles. Do not tune it after seeing advanced Benchmark v2 results. Do not add Challenger behavior until this baseline is frozen.
