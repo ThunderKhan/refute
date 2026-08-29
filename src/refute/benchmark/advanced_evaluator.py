@@ -14,6 +14,7 @@ from ..verify_v21 import verify_case_v21
 from ..verify_v22 import verify_case_v22
 from ..verify_v23 import verify_case_v23
 from ..verify_v24 import verify_case_v24
+from ..verify_v3 import verify_case_v3
 from .evaluator import discover_cases
 from .oracle import expected_verdict_for_case
 
@@ -27,6 +28,9 @@ class AdvancedCaseEvaluation:
     runtime_seconds: float
     reason: str
     run_id: str
+    challenge_candidates: int = 0
+    challenge_counterexamples: int = 0
+    challenger_called: bool = False
     error: str | None = None
 
 
@@ -36,9 +40,9 @@ def _normalize_iteration(iteration: str | int | float) -> str:
         return "1"
     if value in {"2", "2.0"}:
         return "2"
-    if value in {"2.1", "2.2", "2.3", "2.4"}:
-        return value
-    raise ValueError("advanced iteration must be 1, 2, 2.1, 2.2, 2.3, or 2.4")
+    if value in {"2.1", "2.2", "2.3", "2.4", "3", "3.0"}:
+        return "3" if value == "3.0" else value
+    raise ValueError("advanced iteration must be 1, 2, 2.1, 2.2, 2.3, 2.4, or 3")
 
 
 def _iteration_slug(iteration: str) -> str:
@@ -57,7 +61,7 @@ def evaluate_advanced(
     provider_name: str = "unknown",
     model_name: str = "unknown",
     timeout_seconds: float = 20.0,
-    iteration: str | int | float = "2.4",
+    iteration: str | int | float = "3",
     max_reproduction_attempts: int = 3,
     max_provider_attempts: int = 1,
     progress: bool = False,
@@ -78,58 +82,45 @@ def evaluate_advanced(
 
         try:
             if iteration_name == "1":
-                result = verify_case(
-                    case,
-                    llm,
-                    artifacts_root=artifacts_root,
-                    timeout_seconds=timeout_seconds,
-                )
+                result = verify_case(case, llm, artifacts_root=artifacts_root, timeout_seconds=timeout_seconds)
             elif iteration_name == "2":
                 result = verify_case_v2(
-                    case,
-                    llm,
-                    artifacts_root=artifacts_root,
-                    timeout_seconds=timeout_seconds,
+                    case, llm, artifacts_root=artifacts_root, timeout_seconds=timeout_seconds,
                     max_reproduction_attempts=max_reproduction_attempts,
                     max_provider_attempts=max_provider_attempts,
                 )
             elif iteration_name == "2.1":
                 result = verify_case_v21(
-                    case,
-                    llm,
-                    artifacts_root=artifacts_root,
-                    timeout_seconds=timeout_seconds,
+                    case, llm, artifacts_root=artifacts_root, timeout_seconds=timeout_seconds,
                     max_reproduction_attempts=max_reproduction_attempts,
                     max_provider_attempts=max_provider_attempts,
                 )
             elif iteration_name == "2.2":
                 result = verify_case_v22(
-                    case,
-                    llm,
-                    artifacts_root=artifacts_root,
-                    timeout_seconds=timeout_seconds,
+                    case, llm, artifacts_root=artifacts_root, timeout_seconds=timeout_seconds,
                     max_reproduction_attempts=max_reproduction_attempts,
                     max_provider_attempts=max_provider_attempts,
                 )
             elif iteration_name == "2.3":
                 result = verify_case_v23(
-                    case,
-                    llm,
-                    artifacts_root=artifacts_root,
-                    timeout_seconds=timeout_seconds,
+                    case, llm, artifacts_root=artifacts_root, timeout_seconds=timeout_seconds,
+                    max_reproduction_attempts=min(max_reproduction_attempts, 2),
+                    max_provider_attempts=max_provider_attempts,
+                )
+            elif iteration_name == "2.4":
+                result = verify_case_v24(
+                    case, llm, artifacts_root=artifacts_root, timeout_seconds=timeout_seconds,
                     max_reproduction_attempts=min(max_reproduction_attempts, 2),
                     max_provider_attempts=max_provider_attempts,
                 )
             else:
-                result = verify_case_v24(
-                    case,
-                    llm,
-                    artifacts_root=artifacts_root,
-                    timeout_seconds=timeout_seconds,
-                    max_reproduction_attempts=min(max_reproduction_attempts, 2),
+                result = verify_case_v3(
+                    case, llm, artifacts_root=artifacts_root, timeout_seconds=timeout_seconds,
                     max_provider_attempts=max_provider_attempts,
                 )
+
             duration = time.perf_counter() - started
+            challenge_executions = getattr(result, "challenge_executions", ())
             item = AdvancedCaseEvaluation(
                 case_id=case.case_id,
                 expected=expected.value,
@@ -138,10 +129,21 @@ def evaluate_advanced(
                 runtime_seconds=duration,
                 reason=result.reason,
                 run_id=result.run_id,
+                challenge_candidates=len(challenge_executions),
+                challenge_counterexamples=sum(
+                    bool(getattr(entry, "is_counterexample", False)) for entry in challenge_executions
+                ),
+                challenger_called=bool(getattr(result, "challenger_called", False)),
             )
             if progress:
                 marker = "correct" if item.correct else "wrong"
-                print(f"         {item.predicted} ({marker}, {duration:.2f}s)", flush=True)
+                suffix = ""
+                if iteration_name == "3":
+                    suffix = (
+                        f", challenges={item.challenge_candidates}, "
+                        f"counterexamples={item.challenge_counterexamples}"
+                    )
+                print(f"         {item.predicted} ({marker}, {duration:.2f}s{suffix})", flush=True)
         except (LLMError, ValueError) as exc:
             duration = time.perf_counter() - started
             item = AdvancedCaseEvaluation(
@@ -158,26 +160,13 @@ def evaluate_advanced(
                 print(f"         ERROR after {duration:.2f}s: {exc}", flush=True)
 
         results.append(item)
-        _write_checkpoint(
-            results,
-            Path(artifacts_root),
-            iteration_name,
-            oracle_separated=oracle_separated,
-        )
+        _write_checkpoint(results, Path(artifacts_root), iteration_name, oracle_separated=oracle_separated)
 
     summary = _summarize(
-        results,
-        provider_name,
-        model_name,
-        iteration_name,
-        oracle_separated=oracle_separated,
+        results, provider_name, model_name, iteration_name, oracle_separated=oracle_separated
     )
     _write_reports(
-        summary,
-        results,
-        Path(artifacts_root),
-        iteration_name,
-        oracle_separated=oracle_separated,
+        summary, results, Path(artifacts_root), iteration_name, oracle_separated=oracle_separated
     )
     return summary
 
@@ -194,13 +183,10 @@ def _summarize(
     correct = sum(item.correct for item in results)
     errors = sum(item.error is not None for item in results)
     non_complete = [
-        item
-        for item in results
+        item for item in results
         if item.error is None and item.expected != Verdict.COMPLETE_FIX.value
     ]
-    false_accepts = sum(
-        item.predicted == Verdict.COMPLETE_FIX.value for item in non_complete
-    )
+    false_accepts = sum(item.predicted == Verdict.COMPLETE_FIX.value for item in non_complete)
     confusion = {
         expected.value: {predicted.value: 0 for predicted in Verdict}
         for expected in Verdict
@@ -211,23 +197,30 @@ def _summarize(
             confusion[item.expected][item.predicted] += 1
 
     generated = iteration in {"2", "2.1", "2.2", "2.3", "2.4"}
+    challenged_cases = [item for item in results if item.challenger_called and item.error is None]
+    challenge_counterexamples = sum(item.challenge_counterexamples for item in challenged_cases)
+    challenger_case_yield = (
+        sum(item.challenge_counterexamples > 0 for item in challenged_cases) / len(challenged_cases)
+        if challenged_cases else 0.0
+    )
     capabilities = {
         "investigator": True,
         "existing_test_execution": True,
         "generated_reproduction": generated,
         "bounded_reproduction_retry": generated,
-        "deterministic_verdict_gate": generated,
+        "deterministic_verdict_gate": iteration in {"2", "2.1", "2.2", "2.3", "2.4"},
         "discriminating_reproduction_semantics": iteration in {"2.1", "2.2", "2.3", "2.4"},
         "evidence_weighting": iteration in {"2.2", "2.3", "2.4"},
         "stagnation_stop": iteration == "2.2",
-        "test_delta_engine": iteration in {"2.3", "2.4"},
+        "test_delta_engine": iteration in {"2.3", "2.4", "3"},
         "conditional_reproduction": iteration in {"2.3", "2.4"},
-        "test_first_routing": iteration == "2.4",
-        "conditional_investigator": iteration == "2.4",
-        "challenger": False,
+        "test_first_routing": iteration in {"2.4", "3"},
+        "conditional_investigator": iteration in {"2.4", "3"},
+        "challenger": iteration == "3",
+        "bounded_nearby_falsification": iteration == "3",
     }
 
-    return {
+    summary = {
         "mode": f"advanced_iteration_{_iteration_slug(iteration)}" + ("_benchmark_v2" if oracle_separated else ""),
         "iteration": iteration,
         "benchmark_oracle_separated": oracle_separated,
@@ -246,6 +239,14 @@ def _summarize(
         "confusion_matrix": confusion,
         "capabilities": capabilities,
     }
+    if iteration == "3":
+        summary.update({
+            "challenged_cases": len(challenged_cases),
+            "challenge_candidates": sum(item.challenge_candidates for item in challenged_cases),
+            "challenge_counterexamples": challenge_counterexamples,
+            "challenger_case_yield": challenger_case_yield,
+        })
+    return summary
 
 
 def _root(artifacts_root: Path, iteration: str, *, oracle_separated: bool) -> Path:
@@ -284,7 +285,12 @@ def _write_reports(
         for item in results:
             handle.write(json.dumps(asdict(item), sort_keys=True) + "\n")
 
-    if iteration == "2.4":
+    if iteration == "3":
+        capability_text = (
+            "Deterministic test-first routing + conditional Investigator + Challenger-generated nearby falsification "
+            "cases executed on original and patch. Oracle and hidden tests remain evaluator-only."
+        )
+    elif iteration == "2.4":
         capability_text = (
             "Deterministic test-first routing + pytest failure-set delta analysis. Investigator, generated reproduction, "
             "and verifier are conditional fallbacks only when deterministic evidence is ambiguous. No Challenger cases."
@@ -325,16 +331,26 @@ def _write_reports(
         f"- Verdict accuracy: {summary['verdict_accuracy']:.1%}",
         f"- False acceptance rate: {summary['false_acceptance_rate']:.1%}",
         f"- Average runtime: {summary['average_runtime_seconds']:.3f}s",
+    ]
+    if iteration == "3":
+        lines.extend([
+            f"- Challenged cases: {summary['challenged_cases']}",
+            f"- Challenge candidates: {summary['challenge_candidates']}",
+            f"- Challenge counterexamples: {summary['challenge_counterexamples']}",
+            f"- Challenger case yield: {summary['challenger_case_yield']:.1%}",
+        ])
+    lines.extend([
         "",
         f"Capabilities: {capability_text}",
         "",
-        "| Case | Expected | Predicted | Correct | Runtime | Run/Error |",
-        "|---|---|---|---|---:|---|",
-    ]
+        "| Case | Expected | Predicted | Correct | Runtime | Challenges | Counterexamples | Run/Error |",
+        "|---|---|---|---|---:|---:|---:|---|",
+    ])
     for item in results:
         run_or_error = item.error or item.run_id
         lines.append(
             f"| {item.case_id} | {item.expected} | {item.predicted} | "
-            f"{'yes' if item.correct else 'no'} | {item.runtime_seconds:.2f}s | {run_or_error} |"
+            f"{'yes' if item.correct else 'no'} | {item.runtime_seconds:.2f}s | "
+            f"{item.challenge_candidates} | {item.challenge_counterexamples} | {run_or_error} |"
         )
     (root / "report.md").write_text("\n".join(lines) + "\n", encoding="utf-8")
