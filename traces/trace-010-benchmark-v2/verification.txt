@@ -4,14 +4,17 @@ Required checks:
 1. git pull
 2. python -m pytest
 3. python scripts/build_benchmark_v2.py
-4. refute inspect benchmark_v2\case_002
-5. refute eval-baseline benchmark_v2 --oracle-root eval\benchmark_v2 --provider ollama --model qwen3:0.6b --llm-timeout 30
+4. python scripts/audit_benchmark_v2.py
+5. refute inspect benchmark_v2\case_002
+6. refute eval-baseline benchmark_v2 --oracle-root eval\benchmark_v2 --provider ollama --model qwen3:0.6b --llm-timeout 30
 
 Expected structural checks:
 - public case.json contains no expected_verdict;
+- separation audit ends with `AUDIT PASSED`;
 - refute inspect on a public case prints `expected verdict: withheld from public case`;
-- case_002 public test should show original FAIL / patched PASS even though evaluator oracle is partial_fix;
-- Baseline v2 artifacts must be written under artifacts/eval/baseline_v2/;
-- the first clean Baseline v2 result must be frozen before any Challenger work.
+- case_002 public test shows original FAIL / patched PASS even though evaluator oracle is partial_fix;
+- partial/regression hidden tests remain outside the public case tree and fail on the relevant patched implementations;
+- Baseline v2 artifacts are written under artifacts/eval/baseline_v2/;
+- the first clean Baseline v2 result is frozen before any Challenger work.
 
 Do not compare Benchmark v2 advanced results against Baseline v1 because the evidence available to the system changed.
