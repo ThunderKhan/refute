@@ -14,6 +14,7 @@ from .verify_v2 import verify_case_v2
 from .verify_v21 import verify_case_v21
 from .verify_v22 import verify_case_v22
 from .verify_v23 import verify_case_v23
+from .verify_v24 import verify_case_v24
 
 
 def _status(result) -> str:
@@ -59,7 +60,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     verify_parser = subparsers.add_parser(
         "verify",
-        help="Run an advanced verification iteration. Defaults to Iteration 2.3.",
+        help="Run an advanced verification iteration. Defaults to Iteration 2.4.",
     )
     verify_parser.add_argument("case_dir", type=Path)
     _add_provider_args(verify_parser)
@@ -67,9 +68,9 @@ def build_parser() -> argparse.ArgumentParser:
     verify_parser.add_argument("--timeout", type=float, default=20.0)
     verify_parser.add_argument(
         "--iteration",
-        choices=("1", "2", "2.1", "2.2", "2.3"),
-        default="2.3",
-        help="Advanced verification iteration to run. Defaults to 2.3.",
+        choices=("1", "2", "2.1", "2.2", "2.3", "2.4"),
+        default="2.4",
+        help="Advanced verification iteration to run. Defaults to 2.4.",
     )
     verify_parser.add_argument(
         "--max-reproduction-attempts",
@@ -88,9 +89,9 @@ def build_parser() -> argparse.ArgumentParser:
     advanced_parser.add_argument("--timeout", type=float, default=20.0)
     advanced_parser.add_argument(
         "--iteration",
-        choices=("1", "2", "2.1", "2.2", "2.3"),
-        default="2.3",
-        help="Advanced verification iteration to evaluate. Defaults to 2.3.",
+        choices=("1", "2", "2.1", "2.2", "2.3", "2.4"),
+        default="2.4",
+        help="Advanced verification iteration to evaluate. Defaults to 2.4.",
     )
     advanced_parser.add_argument(
         "--max-reproduction-attempts",
@@ -212,8 +213,13 @@ def main(argv: list[str] | None = None) -> int:
                     case, llm, artifacts_root=args.artifacts, timeout_seconds=args.timeout,
                     max_reproduction_attempts=args.max_reproduction_attempts,
                 )
-            else:
+            elif args.iteration == "2.3":
                 result = verify_case_v23(
+                    case, llm, artifacts_root=args.artifacts, timeout_seconds=args.timeout,
+                    max_reproduction_attempts=min(args.max_reproduction_attempts, 2),
+                )
+            else:
+                result = verify_case_v24(
                     case, llm, artifacts_root=args.artifacts, timeout_seconds=args.timeout,
                     max_reproduction_attempts=min(args.max_reproduction_attempts, 2),
                 )
@@ -254,7 +260,7 @@ def main(argv: list[str] | None = None) -> int:
                 f"high={counts['discriminating']} diagnostic={counts['non_discriminating']} none={counts['not_reproduced']}"
             )
             print("stopped early for stagnation: " + ("yes" if result.stopped_for_stagnation else "no"))
-        elif args.iteration == "2.3":
+        elif args.iteration in {"2.3", "2.4"}:
             print(f"test delta: {result.test_delta.classification}")
             print(
                 "observed failures: "
@@ -264,6 +270,8 @@ def main(argv: list[str] | None = None) -> int:
             )
             print(f"reproduction attempts: {len(result.reproduction_attempts)}")
             print("discriminating reproduction found: " + ("yes" if result.discriminating_reproduction is not None else "no"))
+            if args.iteration == "2.4":
+                print("investigator called: " + ("yes" if result.investigator_called else "no"))
             print("semantic verifier called: " + ("yes" if result.verifier_called else "no"))
 
         print(f"verdict: {result.verdict.value}")
