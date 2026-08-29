@@ -8,3 +8,7 @@ venv/
 
 artifacts/
 *.egg-info/
+
+# Public Benchmark v2 cases are reproducibly generated from the frozen v1
+# implementations by scripts/build_benchmark_v2.py. Keep only the README tracked.
+benchmark_v2/case_*/
