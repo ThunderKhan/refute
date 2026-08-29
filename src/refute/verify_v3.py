@@ -52,9 +52,13 @@ class VerificationResultV3:
 def _classify_challenge(original: ExecutionResult, patched: ExecutionResult) -> str:
     if original.timed_out or patched.timed_out:
         return "invalid_execution"
-    if patched.passed:
+    # Pytest exit 0 = pass, exit 1 = test assertion/failure. Collection, usage,
+    # internal, and environment errors (2+) are not semantic patch evidence.
+    if original.exit_code not in {0, 1} or patched.exit_code not in {0, 1}:
+        return "invalid_execution"
+    if patched.exit_code == 0:
         return "survived"
-    if original.passed:
+    if original.exit_code == 0 and patched.exit_code == 1:
         return "regression_counterexample"
     if original.exit_code == 1 and patched.exit_code == 1:
         return "remaining_bug_counterexample"
@@ -136,8 +140,6 @@ def verify_case_v3(
         suffix=".json",
     ))
 
-    # Preserve the reliable deterministic outcomes from Iteration 2.4. The
-    # Challenger is specifically for patches that appear repaired publicly.
     immediate_verdict, immediate_reason = _triage_delta(delta)
     if delta.classification == "suite_repaired":
         immediate_verdict = None
@@ -235,9 +237,8 @@ def verify_case_v3(
         run.advance(RunStage.CHALLENGED)
         verdict, reason = _challenge_verdict(challenge_executions)
         if verdict is None:
-            if challenge_executions and all(
-                item.classification == "survived" for item in challenge_executions
-            ):
+            valid = [item for item in challenge_executions if item.classification != "invalid_execution"]
+            if valid and all(item.classification == "survived" for item in valid):
                 verdict = Verdict.COMPLETE_FIX
                 reason = (
                     "The public reported trigger is repaired and the patch survived all valid Challenger-generated nearby cases within the bounded challenge budget."
@@ -249,9 +250,6 @@ def verify_case_v3(
                 )
         run.advance(RunStage.REGRESSION_CHECKED)
     else:
-        # Ambiguous/non-reproduced public evidence stays conservative. Iteration 3
-        # does not spend Challenger calls when the reported trigger itself is not
-        # established.
         verdict = Verdict.INCONCLUSIVE
         reason = (
             "Public deterministic evidence did not establish a repaired reported trigger, so nearby falsification would not support a causal patch verdict."
