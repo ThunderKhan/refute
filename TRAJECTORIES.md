@@ -28,7 +28,7 @@ Normalized trace: `traces/trace-002-static-baseline/`.
 
 Human instruction: `okay go ahead and implement add whatever is not addeed for milestone 1 and 2 for our revised architecture`.
 
-This round added the ten-case benchmark, batch baseline evaluator, evidence store, orchestration state machine, package boundaries, and architecture documentation. The human ran frozen Baseline v1 with `qwen3:0.6b`: 10.0% verdict accuracy, 57.1% false acceptance, 2.405s average runtime.
+This round added the ten-case benchmark, batch baseline evaluator, evidence store, orchestration state machine, package boundaries, and architecture documentation. Frozen Baseline v1 measured 10.0% verdict accuracy, 57.1% false acceptance, and 2.405s average runtime.
 
 Normalized trace: `traces/trace-003-evaluator-architecture/`.
 
@@ -36,59 +36,47 @@ Normalized trace: `traces/trace-003-evaluator-architecture/`.
 
 ## trajectory-004 — Advanced Iteration 1
 
-Human instruction: `okay let's implement this`.
-
-Iteration 1 added the Investigator, deterministic existing-test execution, evidence persistence, and evidence-constrained verifier while intentionally excluding generated reproduction and Challenger behavior. The human measured 40.0% verdict accuracy, 28.6% false acceptance, and 5.641s average runtime on the same ten cases.
+Iteration 1 added the Investigator, deterministic existing-test execution, evidence persistence, and evidence-constrained verifier. Result: 40.0% accuracy, 28.6% false acceptance, 5.641s average runtime.
 
 Normalized trace: `traces/trace-004-advanced-iteration-1/`.
 
 ---
 
-## trajectory-005 — Advanced Iteration 2: reproduction loop
+## trajectory-005 — Advanced Iteration 2
 
-Human instruction: `implement it`.
-
-Iteration 2 added generated pytest reproduction, bounded execution-feedback retry, generated-test safety validation, provider/malformed-output recovery, a deterministic verdict gate, batch progress/checkpointing, and configurable LLM timeouts. The final clean ten-case run measured 10.0% verdict accuracy, 0.0% false acceptance, and 36.569s average runtime. The main discovered flaw was that generated tests failing on both original and patch were treated as successful reproductions.
+Generated reproduction and bounded retry reduced false acceptance to 0.0% but produced 10.0% accuracy and 36.569s runtime because fail/fail generated tests were treated too strongly.
 
 Normalized trace: `traces/trace-005-reproduction-loop/`.
 
 ---
 
-## trajectory-006 — Advanced Iteration 2.1: discriminating reproduction semantics
+## trajectory-006 — Advanced Iteration 2.1
 
-Human instruction: `Start with 2.1 and fix the errors`.
-
-Only original FAIL + patch PASS now counts as a successful generated reproduction. The human verified `31 passed in 18.56s`; the ten-case run measured 40.0% accuracy, 0.0% false acceptance, and 52.584s average runtime.
+Only original FAIL + patch PASS became successful reproduction evidence. Result: 40.0% accuracy, 0.0% FAR, 52.584s runtime.
 
 Normalized trace: `traces/trace-006-iteration-2-1/`.
 
 ---
 
-## trajectory-007 — Advanced Iteration 2.2: evidence weighting
+## trajectory-007 — Advanced Iteration 2.2
 
-Human instruction: `go ahead with 2.2`.
-
-Iteration 2.2 assigned confidence semantics to generated evidence and added a deterministic weighted-verdict gate plus stagnation stopping. The ten-case run measured 30.0% accuracy, 0.0% false acceptance, and 50.863s average runtime.
+Evidence weighting and stagnation stopping measured 30.0% accuracy, 0.0% FAR, and 50.863s runtime.
 
 Normalized trace: `traces/trace-007-iteration-2-2/`.
 
 ---
 
-## trajectory-008 — Advanced Iteration 2.3: deterministic test-delta engine
+## trajectory-008 — Advanced Iteration 2.3
 
-Human instruction: `here you go I guess it needs fixing if it does go ahead`.
-
-Iteration 2.3 introduced deterministic comparison of original/patched pytest failure identifiers. It reduced average runtime to 11.657s, but one Investigator timeout left only 9/10 cases complete and suite-repaired cases still used unnecessary semantic calls.
+Deterministic pytest failure-set deltas reduced runtime to 11.657s and produced 50.0% accuracy with one provider error.
 
 Normalized trace: `traces/trace-008-iteration-2-3/`.
 
 ---
 
-## trajectory-009 — Advanced Iteration 2.4: test-first routing
+## trajectory-009 — Advanced Iteration 2.4
 
-Iteration 2.4 moved deterministic original/patched execution before any agent call. The human verified `43 passed in 35.58s` and a clean Benchmark v1 run at 100.0% accuracy, 0.0% false acceptance, and 1.019s average runtime.
-
-That apparent perfect result became a benchmark diagnostic: all ten cases were solved without agent calls, proving Benchmark v1 exposed too much oracle information through public tests.
+Test-first routing produced 100.0% on Benchmark v1 at 1.019s/case, but every case was solved without agent calls. This became evidence that Benchmark v1 leaked too much verdict information through public tests.
 
 Normalized trace: `traces/trace-009-iteration-2-4/`.
 
@@ -98,11 +86,7 @@ Normalized trace: `traces/trace-009-iteration-2-4/`.
 
 Human instruction: `okay do it`.
 
-The benchmark was redesigned before Challenger work. Public cases use `case.json` with no expected verdict. Expected verdicts and hidden nearby/boundary/regression tests are evaluator-only under `eval/benchmark_v2/`. A builder produces ten narrow public reported-trigger cases and an audit checks the separation.
-
-The human verified `48 passed in 31.98s`, a successful ten-case build, and `AUDIT PASSED`. Frozen Baseline v2 measured 10.0% accuracy, 57.1% FAR, and 2.527s average runtime. Iteration 2.4 then dropped from 100.0% on Benchmark v1 to **60.0% accuracy / 57.1% FAR / 0.929s** on Benchmark v2, confirming the previous saturation came from public-test leakage.
-
-Its four false `complete_fix` verdicts were the intended nearby-failure cases: upper boundary, internal-space preservation, tiny truncation limits, and exception specificity.
+Public cases were separated from evaluator-only expected verdicts and hidden nearby tests. The human verified 48 tests, the ten-case builder, and the separation audit. Frozen Baseline v2 measured **10.0% / 57.1% FAR / 2.527s**, while unchanged Iteration 2.4 dropped to **60.0% / 57.1% FAR / 0.929s**, confirming the Benchmark v1 saturation.
 
 Normalized trace: `traces/trace-010-benchmark-v2/`.
 
@@ -112,13 +96,23 @@ Normalized trace: `traces/trace-010-benchmark-v2/`.
 
 Human instruction: `okay go ahead`.
 
-Iteration 3 adds an explicit adversarial Challenger after the Benchmark v2 ablation. Deterministic public tests still run first. Mechanically decisive cases remain on the cheap path; only patches whose public reported trigger changes from FAIL to PASS enter the challenge path.
+Iteration 3 added conditional adversarial nearby-test generation after a public trigger was repaired. A clean Benchmark v2 run measured **40.0% accuracy, 0.0% FAR, 42.9% Challenger case yield, five executable counterexamples, and 14.774s runtime**.
 
-The Investigator frames expected behavior and risk areas from public issue text and patch diff. The Challenger then proposes one to three nearby pytest falsification cases without access to evaluator oracles or hidden tests. Each challenge executes on both original and patch. Original PASS + patch FAIL is classified as executable regression evidence; original FAIL + patch FAIL after the public trigger was repaired is classified as remaining-bug evidence supporting `partial_fix`. Timeouts and pytest exit codes 2+ are explicitly invalid evidence.
-
-The evaluator now reports challenged cases, candidate count, executable counterexamples, and Challenger case yield. Tests cover parser safety plus synthetic partial-fix and regression discovery scenarios. Local verification and the Benchmark v2 measurement are pending; no improvement claim is made yet.
+The safety gain was real, but candidate grounding was too weak. True complete fixes were sometimes labeled partial because arbitrary fail/fail generated tests counted as remaining-bug evidence, while several suite-repaired cases produced no usable challenge candidate. This was preserved as a safety-positive / accuracy-negative experiment.
 
 Normalized trace: `traces/trace-011-iteration-3/`.
+
+---
+
+## trajectory-012 — Advanced Iteration 3.1: grounded Challenger
+
+The clean Iteration 3 result motivated a narrower evidence contract. Iteration 3.1 generates one candidate per call, requires a typed intent (`remaining_requirement` or `regression_guard`), and requires an exact short quote copied from the public issue report. A deterministic gate rejects invented grounding before test execution.
+
+Original PASS + patch FAIL remains strong regression evidence. Original FAIL + patch FAIL can support `partial_fix` only for an explicitly grounded remaining requirement. Invalid/non-grounded outputs can be retried once; survived grounded tests can support a bounded `complete_fix`. Oracle and hidden tests remain unavailable to the verification path.
+
+Local verification is pending. No improvement claim is made until the measured Benchmark v2 run is supplied.
+
+Normalized trace: `traces/trace-012-iteration-3-1/`.
 
 ---
 
