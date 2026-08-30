@@ -1,0 +1,30 @@
+Verification status: PENDING LOCAL RUN
+
+Iteration 5 hypothesis:
+A small local model is more reliable when choosing among deterministic public-contract-grounded probes than when inventing assertions, test code, or structured semantic intents.
+
+Architecture:
+- deterministic public tests run first;
+- only suite-repaired cases enter the probe path;
+- a deterministic compiler recognizes a deliberately small MVP contract vocabulary and emits valid pytest probes from public issue text + public API only;
+- the language model sees probe IDs/descriptions and prioritizes probes under a bounded budget;
+- if planner output is unusable or provider execution fails, selection falls back to deterministic probe order and records the fallback explicitly;
+- probe tests execute deterministically on original and patch;
+- no oracle or hidden-test material is loaded by the compiler, planner, or verifier.
+
+Required local checks:
+1. git pull
+2. python -m pytest
+3. python scripts/build_benchmark_v2.py
+4. targeted case_001, case_002, case_003, case_006, case_007 with --iteration 5
+5. full Benchmark v2 evaluation with --iteration 5
+
+Observe:
+- whether case_002 becomes partial_fix from an inclusive-upper-boundary compiled probe;
+- whether case_003 becomes regression_introduced from an internal-space preservation probe;
+- whether case_006 becomes partial_fix from very-small-limit length probes;
+- whether case_007 becomes regression_introduced from exception-preservation probes;
+- whether case_001 accumulates two survived range probes and becomes complete_fix;
+- planner fallback frequency, accuracy, FAR, Challenger yield, and runtime.
+
+Do not claim Iteration 5 improvement until a clean local result is supplied.
