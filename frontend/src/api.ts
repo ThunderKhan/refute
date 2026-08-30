@@ -24,6 +24,23 @@ export type ProbePayload = {
   patched: ExecutionPayload;
 };
 
+export type GitHubPRMetadata = {
+  url: string;
+  owner: string;
+  repo: string;
+  number: number;
+  title: string;
+  body: string;
+  base_sha: string;
+  head_sha: string;
+  changed_files: number;
+  additions: number;
+  deletions: number;
+  linked_issue_number: number | null;
+  linked_issue_title: string | null;
+  issue_text: string;
+};
+
 export type VerificationPayload = {
   run_id: string;
   case_id: string;
@@ -40,6 +57,7 @@ export type VerificationPayload = {
   challenge_counterexamples: number;
   probes: ProbePayload[];
   evidence_path: string;
+  source?: Record<string, unknown> | null;
 };
 
 const API_ROOT = import.meta.env.VITE_REFUTE_API ?? "http://127.0.0.1:8765";
@@ -69,6 +87,27 @@ export async function verifyCase(caseId: string): Promise<VerificationPayload> {
       model: "qwen3:0.6b",
       llm_timeout: 30,
       execution_timeout: 20,
+    }),
+  });
+}
+
+export async function inspectGitHubPR(url: string): Promise<GitHubPRMetadata> {
+  return request<GitHubPRMetadata>("/api/github/inspect", {
+    method: "POST",
+    body: JSON.stringify({ url }),
+  });
+}
+
+export async function verifyGitHubPR(url: string): Promise<VerificationPayload> {
+  return request<VerificationPayload>("/api/github/verify", {
+    method: "POST",
+    body: JSON.stringify({
+      url,
+      confirm_execution: true,
+      provider: "ollama",
+      model: "qwen3:0.6b",
+      llm_timeout: 30,
+      execution_timeout: 30,
     }),
   });
 }
