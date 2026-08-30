@@ -4,17 +4,27 @@ Presentation layer for the `refute` patch-verification engine.
 
 ## Current scope
 
-The frontend establishes the visual system and multi-page product experience before backend wiring:
-
 - `/` — overview and frozen headline metrics
-- `/verify` — interactive case_002 verification walkthrough
+- `/verify` — live Iteration 5 verification against local Benchmark v2 cases
 - `/benchmark` — Benchmark v2 results and experiment history
 - `/how-it-works` — final Iteration 5 architecture
 - `/journey` — measured iteration timeline
 
-The Verify page currently uses frozen demonstration data from the clean Iteration 5 case_002 run. It is intentionally labelled as presentation data until the Python engine API wrapper is connected.
+The Verify page now calls the local Python `refute` engine through the standard-library dashboard API. The API does not load evaluator-only oracle or hidden-test material into the verification path.
 
 ## Run locally
+
+From the repository root, refresh the editable install so the `refute-dashboard` entry point exists:
+
+```powershell
+python -m pip install -e ".[dev]"
+python scripts/build_benchmark_v2.py
+refute-dashboard
+```
+
+The API listens on `http://127.0.0.1:8765` by default.
+
+In a second terminal:
 
 ```powershell
 cd frontend
@@ -23,6 +33,8 @@ npm run dev
 ```
 
 Vite serves the frontend on `http://localhost:5173` by default.
+
+The frontend uses `http://127.0.0.1:8765` unless `VITE_REFUTE_API` is set.
 
 ## Production build
 
