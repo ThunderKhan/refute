@@ -19,9 +19,16 @@ python scripts/build_benchmark_v2.py
 python scripts/audit_benchmark_v2.py
 ```
 
-- [ ] Audit ends with `AUDIT PASSED`.
-- [ ] Public `case.json` files contain no expected verdict.
-- [ ] `oracles.json` and `hidden_tests.json` remain evaluator-only.
+- [x] Audit ends with `AUDIT PASSED`.
+- [x] Public cases are confirmed oracle-free by the benchmark audit.
+- [x] `oracles.json` and `hidden_tests.json` remain evaluator-only according to the benchmark audit.
+
+Clean-clone verification on 2026-08-30:
+
+```text
+built 10 public cases under benchmark_v2
+AUDIT PASSED: public cases are oracle-free and hidden behavior is separated as designed.
+```
 
 ## 3. Current project tests
 
@@ -29,13 +36,14 @@ python scripts/audit_benchmark_v2.py
 python -m pytest
 ```
 
-- [ ] Current clean-clone suite passes.
-- [ ] Record exact count and wall-clock time.
+- [x] Current clean-clone suite passes.
+- [x] Exact clean-clone checkpoint recorded: **92 passed in 73.36s**.
 
-Historical checkpoints must remain labelled separately:
+Historical checkpoints remain labelled separately:
 
 - Frozen Iteration 5 measurement point: `72 passed in 63.16s`.
-- Later product/MCP integration checkpoint: `92 passed in 67.48s`.
+- Earlier product/MCP integration checkpoint: `92 passed in 67.48s`.
+- Final clean-clone pre-submission checkpoint: `92 passed in 73.36s`.
 
 ## 4. Benchmark reproduction
 
@@ -57,11 +65,19 @@ npm install
 npm run build
 ```
 
-- [ ] Production frontend build succeeds.
-- [ ] `/verify` opens without hard-refresh routing issues.
-- [ ] Benchmark `case_002` demonstrates `partial_fix` with an upper-boundary counterexample.
-- [ ] Public GitHub PR inspection renders Markdown and task-list checkboxes correctly.
-- [ ] Real-PR run shows targeted reproduction, nearby-test evidence when needed, and conservative `inconclusive` behavior when completeness evidence is insufficient.
+- [x] Production frontend build succeeds in a clean clone.
+- [x] `/verify` opens without hard-refresh routing issues.
+- [x] Benchmark `case_002` demonstrates `partial_fix` with an upper-boundary counterexample.
+- [x] Public GitHub PR inspection renders Markdown and task-list checkboxes correctly.
+- [x] Real-PR run shows targeted reproduction, nearby-test evidence when needed, and conservative `inconclusive` behavior when completeness evidence is insufficient.
+
+Clean-clone frontend checkpoint on 2026-08-30:
+
+```text
+vite v8.2.2
+1828 modules transformed
+production build succeeded in 11.55s
+```
 
 ## 6. MCP integration
 
@@ -77,7 +93,7 @@ Before submission, verify the current clean clone still imports the MCP server:
 python -c "from refute.mcp_server import mcp; print('refute MCP import OK')"
 ```
 
-- [ ] Import succeeds in final clean clone.
+- [x] Import succeeds in the clean-clone checkpoint.
 
 ## 7. Safety / claim boundary
 
@@ -96,7 +112,18 @@ python -c "from refute.mcp_server import mcp; print('refute MCP import OK')"
 
 ## 9. Final environment record
 
-Record these immediately before submission:
+Clean-clone checkpoint observed on 2026-08-30:
+
+```text
+clone SHA: 653ae58f464b9a6b6457a1a2b0e050eb2abee355
+Python 3.12.10
+Ollama 0.33.0
+qwen3:0.6b present (522 MB)
+Node v24.14.1
+npm 11.11.0
+```
+
+Because documentation commits were pushed after this clone, rerun the following immediately before submission and record the then-current SHA:
 
 ```powershell
 git rev-parse HEAD
@@ -107,10 +134,10 @@ node --version
 npm --version
 ```
 
-- [ ] Final Git SHA recorded.
-- [ ] Python version recorded.
-- [ ] Ollama version and `qwen3:0.6b` presence recorded.
-- [ ] Node/npm versions recorded for dashboard reproduction.
+- [ ] Final post-hardening Git SHA recorded.
+- [x] Python version recorded for the clean-clone checkpoint.
+- [x] Ollama version and `qwen3:0.6b` presence recorded for the clean-clone checkpoint.
+- [x] Node/npm versions recorded for dashboard reproduction.
 
 ## 10. Demo video <= 5 minutes
 
@@ -149,4 +176,4 @@ Suggested structure:
 
 ## Stop condition
 
-After the clean-clone gate passes, do not add new verification semantics unless a submission-blocking defect is found. Prefer documentation, evidence, and demo reliability over new features.
+The clean-clone install/audit/tests/frontend-build/MCP-import gate has passed. Do not add new verification semantics unless a submission-blocking defect is found. Prefer documentation, evidence, and demo reliability over new features.
