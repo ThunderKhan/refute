@@ -16,6 +16,7 @@ from ..verify_v23 import verify_case_v23
 from ..verify_v24 import verify_case_v24
 from ..verify_v3 import verify_case_v3
 from ..verify_v31 import verify_case_v31
+from ..verify_v32 import verify_case_v32
 from .evaluator import discover_cases
 from .oracle import expected_verdict_for_case
 
@@ -40,9 +41,9 @@ def _normalize_iteration(iteration: str | int | float) -> str:
     value = str(iteration)
     if value in {"1", "1.0"}: return "1"
     if value in {"2", "2.0"}: return "2"
-    if value in {"2.1", "2.2", "2.3", "2.4", "3", "3.0", "3.1"}:
+    if value in {"2.1", "2.2", "2.3", "2.4", "3", "3.0", "3.1", "3.2"}:
         return "3" if value == "3.0" else value
-    raise ValueError("advanced iteration must be 1, 2, 2.1, 2.2, 2.3, 2.4, 3, or 3.1")
+    raise ValueError("advanced iteration must be 1, 2, 2.1, 2.2, 2.3, 2.4, 3, 3.1, or 3.2")
 
 
 def _iteration_slug(iteration: str) -> str:
@@ -61,7 +62,7 @@ def evaluate_advanced(
     provider_name: str = "unknown",
     model_name: str = "unknown",
     timeout_seconds: float = 20.0,
-    iteration: str | int | float = "3.1",
+    iteration: str | int | float = "3.2",
     max_reproduction_attempts: int = 3,
     max_challenge_attempts: int = 2,
     max_provider_attempts: int = 1,
@@ -95,8 +96,10 @@ def evaluate_advanced(
                 result = verify_case_v24(case, llm, artifacts_root=artifacts_root, timeout_seconds=timeout_seconds, max_reproduction_attempts=min(max_reproduction_attempts, 2), max_provider_attempts=max_provider_attempts)
             elif iteration_name == "3":
                 result = verify_case_v3(case, llm, artifacts_root=artifacts_root, timeout_seconds=timeout_seconds, max_provider_attempts=max_provider_attempts)
-            else:
+            elif iteration_name == "3.1":
                 result = verify_case_v31(case, llm, artifacts_root=artifacts_root, timeout_seconds=timeout_seconds, max_challenge_attempts=max_challenge_attempts, max_provider_attempts=max_provider_attempts)
+            else:
+                result = verify_case_v32(case, llm, artifacts_root=artifacts_root, timeout_seconds=timeout_seconds, max_challenge_attempts=max_challenge_attempts)
 
             duration = time.perf_counter() - started
             challenge_executions = getattr(result, "challenge_executions", ())
@@ -116,7 +119,7 @@ def evaluate_advanced(
             if progress:
                 marker = "correct" if item.correct else "wrong"
                 suffix = ""
-                if iteration_name in {"3", "3.1"}:
+                if iteration_name in {"3", "3.1", "3.2"}:
                     suffix = f", challenges={item.challenge_candidates}, counterexamples={item.challenge_counterexamples}, generation_failures={item.challenge_generation_failures}"
                 print(f"         {item.predicted} ({marker}, {duration:.2f}s{suffix})", flush=True)
         except (LLMError, ValueError) as exc:
@@ -148,18 +151,20 @@ def _summarize(results: list[AdvancedCaseEvaluation], provider: str, model: str,
     challenged_cases = [item for item in results if item.challenger_called and item.error is None]
     challenge_counterexamples = sum(item.challenge_counterexamples for item in challenged_cases)
     challenger_case_yield = (sum(item.challenge_counterexamples > 0 for item in challenged_cases) / len(challenged_cases)) if challenged_cases else 0.0
-    challenger_iterations = {"3", "3.1"}
+    challenger_iterations = {"3", "3.1", "3.2"}
     generated = iteration in {"2", "2.1", "2.2", "2.3", "2.4"}
     capabilities = {
-        "investigator": True,
+        "investigator": iteration != "3.2",
         "existing_test_execution": True,
         "generated_reproduction": generated,
-        "test_delta_engine": iteration in {"2.3", "2.4", "3", "3.1"},
-        "test_first_routing": iteration in {"2.4", "3", "3.1"},
+        "test_delta_engine": iteration in {"2.3", "2.4", "3", "3.1", "3.2"},
+        "test_first_routing": iteration in {"2.4", "3", "3.1", "3.2"},
         "challenger": iteration in challenger_iterations,
-        "grounded_challenger": iteration == "3.1",
+        "grounded_challenger": iteration in {"3.1", "3.2"},
         "exact_issue_quote_gate": iteration == "3.1",
-        "bounded_challenge_retry": iteration == "3.1",
+        "contract_id_grounding": iteration == "3.2",
+        "deterministic_contract_extraction": iteration == "3.2",
+        "bounded_challenge_retry": iteration in {"3.1", "3.2"},
     }
     summary = {
         "mode": f"advanced_iteration_{_iteration_slug(iteration)}" + ("_benchmark_v2" if oracle_separated else ""),
@@ -210,7 +215,15 @@ def _write_reports(summary: dict, results: list[AdvancedCaseEvaluation], artifac
         for item in results:
             handle.write(json.dumps(asdict(item), sort_keys=True) + "\n")
 
-    capability_text = "Grounded Challenger with exact issue-quote validation and bounded single-candidate retry." if iteration == "3.1" else ("Conditional Challenger-generated nearby falsification executed on original and patch." if iteration == "3" else "Advanced verification iteration.")
+    if iteration == "3.2":
+        capability_text = "Deterministic issue-contract extraction + contract-id-grounded Challenger with bounded single-candidate retry; no Investigator required on the challenge path."
+    elif iteration == "3.1":
+        capability_text = "Grounded Challenger with exact issue-quote validation and bounded single-candidate retry."
+    elif iteration == "3":
+        capability_text = "Conditional Challenger-generated nearby falsification executed on original and patch."
+    else:
+        capability_text = "Advanced verification iteration."
+
     lines = [
         f"# Advanced Iteration {iteration} Evaluation", "",
         f"- Provider: `{summary['provider']}`", f"- Model: `{summary['model']}`", f"- Cases: {summary['cases']}",
@@ -219,7 +232,7 @@ def _write_reports(summary: dict, results: list[AdvancedCaseEvaluation], artifac
         f"- Verdict accuracy: {summary['verdict_accuracy']:.1%}", f"- False acceptance rate: {summary['false_acceptance_rate']:.1%}",
         f"- Average runtime: {summary['average_runtime_seconds']:.3f}s",
     ]
-    if iteration in {"3", "3.1"}:
+    if iteration in {"3", "3.1", "3.2"}:
         lines.extend([
             f"- Challenged cases: {summary['challenged_cases']}",
             f"- Challenge candidates: {summary['challenge_candidates']}",
