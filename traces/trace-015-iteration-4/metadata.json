@@ -1,0 +1,9 @@
+{
+  "trace_id": "trace-015-iteration-4",
+  "iteration": "4",
+  "status": "pending_local_verification",
+  "model_for_benchmark": "qwen3:0.6b",
+  "benchmark": "benchmark_v2",
+  "oracle_separated": true,
+  "architecture_change": "intent_first_challenger_with_deterministic_test_compilation"
+}
