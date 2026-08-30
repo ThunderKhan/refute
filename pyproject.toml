@@ -21,6 +21,7 @@ dev = [
 
 [project.scripts]
 refute = "refute.cli:main"
+refute-dashboard = "refute.dashboard_server:main"
 
 [tool.setuptools]
 package-dir = {"" = "src"}
