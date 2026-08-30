@@ -97,6 +97,47 @@
   font: 10px/1 var(--mono);
 }
 
+.markdown-block {
+  color: var(--body);
+  font-size: 14px;
+  line-height: 1.7;
+}
+.markdown-block > :first-child { margin-top: 0; }
+.markdown-block > :last-child { margin-bottom: 0; }
+.markdown-block h1,
+.markdown-block h2,
+.markdown-block h3 {
+  margin: 24px 0 10px;
+  color: var(--ink);
+  font-family: var(--display);
+  letter-spacing: -.02em;
+}
+.markdown-block h1 { font-size: 24px; }
+.markdown-block h2 { font-size: 20px; }
+.markdown-block h3 { font-size: 17px; }
+.markdown-block p { margin: 10px 0; }
+.markdown-block ul,
+.markdown-block ol { margin: 10px 0; padding-left: 22px; }
+.markdown-block li { margin: 4px 0; }
+.markdown-block code {
+  padding: 2px 5px;
+  border-radius: 4px;
+  background: rgba(255,255,255,.07);
+  color: #f4f1ea;
+  font-size: .9em;
+}
+.markdown-block pre {
+  overflow-x: auto;
+  margin: 14px 0;
+  padding: 14px;
+  border: 1px solid rgba(255,255,255,.08);
+  border-radius: 10px;
+  background: #090909;
+}
+.markdown-block pre code { padding: 0; background: transparent; }
+.markdown-block a { color: #ff6a3d; text-decoration: underline; text-underline-offset: 3px; }
+.markdown-block strong { color: #f5f2eb; }
+
 .live-control-card .pill-button:disabled,
 .live-control-card button:disabled,
 .github-url-field input:disabled {
