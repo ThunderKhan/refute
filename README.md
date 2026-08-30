@@ -57,43 +57,6 @@ The governing design rule is:
 
 The final workflow deliberately gives the model a narrow job. It does **not** author arbitrary pytest code or invent the final verdict. Mechanically derivable checks are compiled deterministically from the public issue contract; the agent only prioritizes which valid probes to try first.
 
-At a high level:
-
-```text
-issue + original + patched code
-              |
-              v
-     run public tests
-      on both versions
-              |
-              v
-      compare test delta
-              |
-       +------+------+
-       |             |
- mechanically     reported trigger
-  decisive?       appears repaired
-       |             |
-       v             v
-    verdict     public-contract
-               probe compiler
-                    |
-                    v
-               bounded probe pool
-                    |
-                    v
-              agent prioritizes
-                 probe IDs
-                    |
-                    v
-             deterministic pytest
-                execution
-             original + patched
-                    |
-                    v
-          evidence-backed verdict
-```
-
 ---
 
 ## Verdict model
