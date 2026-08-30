@@ -1,77 +1,110 @@
+<div align="center">
+
 # refute
 
-> A patch should not be trusted because it looks correct. It should survive attempts to falsify it.
+**Evidence-backed patch verification through adversarial execution.**
 
-`refute` is an evidence-backed agentic workflow for checking whether a software patch actually fixes a reported bug, only fixes the obvious example, does nothing, or introduces a regression.
+A patch should not be trusted because it looks correct. It should survive attempts to falsify it.
 
-Instead of asking one language model to read a diff and guess, `refute` combines deterministic execution with a deliberately narrow agent role. Public tests establish what changed mechanically. When the reported trigger appears repaired, a deterministic contract compiler derives nearby probes from the public issue contract. A local model prioritizes those probes, deterministic pytest execution runs them on the original and patched code, and the final verdict is constrained by the resulting evidence.
+![Python](https://img.shields.io/badge/Python-3.11%2B-3776AB?logo=python&logoColor=white)
+![Runtime Dependencies](https://img.shields.io/badge/runtime%20dependencies-zero-00b894)
+![Benchmark](https://img.shields.io/badge/Benchmark%20v2-10%2F10%20correct-2ea44f)
+![False Acceptance](https://img.shields.io/badge/false%20acceptance-0.0%25-2ea44f)
+![License](https://img.shields.io/badge/license-MIT-2ea44f)
 
-## Why this exists
+**Frontier Engineering Challenge 2026**
 
-Patch review has an uncomfortable failure mode: a change can look plausible, satisfy the reported example, and still be incomplete or harmful nearby.
+[Why refute?](#why-refute) · [How it works](#how-it-works) · [Measured results](#measured-results) · [Quick start](#quick-start) · [Evidence](#evidence-and-reproducibility) · [Docs](#documentation)
 
-Examples include:
-- fixing the lower boundary while leaving the upper boundary broken;
-- trimming whitespace by accidentally deleting meaningful internal spaces;
-- handling division by zero by swallowing unrelated type errors;
-- satisfying one truncation example while violating the length invariant at tiny limits.
+</div>
 
-`refute` is built around falsification rather than plausibility.
+---
 
-## Verdicts
+## Why refute?
 
-`refute` returns one of five verdicts:
+Software patches are often reviewed by asking whether the diff *looks* correct. That is not the same as establishing that the bug is actually fixed.
 
-- `complete_fix`
-- `partial_fix`
-- `ineffective_fix`
-- `regression_introduced`
-- `inconclusive`
+A patch can:
 
-`inconclusive` is intentional. When the available evidence cannot justify a stronger claim, the system prefers uncertainty to fabrication.
+- repair the exact example from the issue while leaving the adjacent boundary broken;
+- fix one behavior while silently regressing another valid behavior;
+- make an existing test pass without satisfying the full public contract;
+- or appear plausible to a language model despite having no executable evidence behind it.
 
-## Final workflow
+`refute` takes a stricter approach:
+
+> **Treat every proposed fix as a hypothesis, then actively try to falsify it.**
+
+The system runs the original and patched code, derives nearby checks from the public issue contract, executes those checks against both versions, and returns a verdict that is constrained by observed evidence.
+
+---
+
+## How it works
 
 ```text
-issue + original + patch
-        |
-        v
-run public tests on original and patch
-        |
-        v
-compare deterministic test delta
-        |
-        +-- mechanically decisive? --> verdict
-        |
-        v
-suite appears repaired
-        |
-        v
-deterministic public-contract probe compiler
-        |
-        v
-bounded probe pool
-        |
-        v
-agent prioritizes probe IDs
-        |
-        v
-deterministic pytest execution
-  on original + patched code
-        |
-        v
-evidence-constrained verdict
+issue + original + patched code
+              |
+              v
+     run public tests
+      on both versions
+              |
+              v
+      compare test delta
+              |
+       +------+------+
+       |             |
+ mechanically     reported trigger
+  decisive?       appears repaired
+       |             |
+       v             v
+    verdict     public-contract
+               probe compiler
+                    |
+                    v
+               bounded probe pool
+                    |
+                    v
+              agent prioritizes
+                 probe IDs
+                    |
+                    v
+             deterministic pytest
+                execution
+             original + patched
+                    |
+                    v
+          evidence-backed verdict
 ```
 
-The governing invariant is:
+The governing design rule is:
 
-> **Agents prioritize and reason. Deterministic tools observe. Evidence constrains the verdict.**
+> **Agents prioritize. Deterministic tools observe. Evidence constrains the verdict.**
 
-## Measured improvement
+The final workflow deliberately gives the model a narrow job. It does **not** author arbitrary pytest code or invent the final verdict. Mechanically derivable checks are compiled deterministically from the public issue contract; the agent only prioritizes which valid probes to try first.
 
-The final evaluation uses **Benchmark v2**, a ten-case controlled synthetic benchmark where public cases contain no expected verdict and evaluator-only oracles/hidden tests are stored separately.
+---
 
-All measurements below use local Ollama with `qwen3:0.6b` at temperature 0.
+## Verdict model
+
+Every run resolves to one of five outcomes:
+
+| Verdict | Meaning |
+|---|---|
+| `complete_fix` | the reported trigger is repaired and enough independent nearby checks also survive |
+| `partial_fix` | the reported trigger is repaired, but a closely related requirement still fails |
+| `ineffective_fix` | the patch does not repair the observed failure |
+| `regression_introduced` | the patch repairs the reported trigger but breaks behavior that worked before |
+| `inconclusive` | the available evidence is insufficient for a stronger claim |
+
+`inconclusive` is a first-class result. `refute` is designed to prefer defensible uncertainty over fabricated certainty.
+
+---
+
+## Measured results
+
+The final evaluation uses **Benchmark v2**, a controlled ten-case benchmark with public case material separated from evaluator-only verdicts and hidden checks.
+
+All measurements below use local Ollama with `qwen3:0.6b` at temperature `0`.
 
 | System | Verdict accuracy | False acceptance rate | Avg runtime |
 |---|---:|---:|---:|
@@ -84,109 +117,271 @@ All measurements below use local Ollama with `qwen3:0.6b` at temperature 0.
 | Intent-first 4 | 30.0% | 0.0% | 13.026s |
 | **Deterministic contract probes 5** | **100.0%** | **0.0%** | **5.077s** |
 
-Iteration 5 completed all ten cases with:
+### Frozen Iteration 5 result
 
-- **10/10 correct verdicts**
-- **0 errors**
-- **4 executable nearby counterexamples**
+- **10 / 10 correct verdicts**
+- **0 evaluation errors**
+- **0.0% false acceptance rate**
+- **4 executable counterexamples discovered**
 - **57.1% Challenger case yield**
 - **0 challenge-generation failures**
 - **0 planner fallbacks**
+- **5.077s average runtime per case**
 
-The four nearby failures recovered by the advanced workflow were an inclusive upper boundary, internal-space preservation, tiny truncation limits, and exception specificity.
+The recovered failures cover four different bug shapes:
 
-## What changed across iterations
+- an inclusive upper-boundary miss;
+- an internal-space preservation regression;
+- tiny truncation limits that still violate the stated invariant;
+- and exception behavior accidentally swallowed by a patch.
 
-The main result was not produced by increasingly elaborate prompting.
+> **Important:** 100% is the measured result on this ten-case controlled benchmark. It is not a claim of universal patch-verification accuracy.
 
-Early advanced iterations asked the model to generate pytest source, then added grounding, contract IDs, and a second critic. Those systems became safer but remained unreliable and slow. Iteration 4 removed Python generation but still asked the model to invent semantic assertions.
+---
 
-Iteration 5 changed the responsibility boundary: mechanically derivable test semantics moved into a deterministic public-contract compiler, while the model was reduced to prioritizing a bounded set of probe IDs. That structural change produced the first clean 10/10 Benchmark v2 run.
+## The experiment that mattered
 
-See [`IMPROVEMENT_CHANGELOG.md`](IMPROVEMENT_CHANGELOG.md) for the measured experiment history and [`TRAJECTORIES.md`](TRAJECTORIES.md) for normalized coding-agent trajectories.
+The strongest improvement did **not** come from a better prompt.
+
+Early iterations gave the model increasing responsibility: generating pytest source, grounding tests in issue text, selecting contract IDs, and then having a second model criticize generated tests. Those systems became safer, but accuracy stalled and runtime increased.
+
+Iteration 4 removed Python generation but still asked the model to invent test semantics. Accuracy remained at 30%.
+
+Iteration 5 changed the responsibility boundary:
+
+```text
+before
+model invents test semantics + code
+        |
+        v
+execution tries to validate them
+
+final
+public contract
+        |
+        v
+deterministic probe compiler
+        |
+        v
+agent prioritizes valid probes
+        |
+        v
+deterministic execution
+```
+
+That change produced the first clean **10/10 Benchmark v2** result.
+
+The project therefore preserves failed and removed experiments rather than hiding them. See [`IMPROVEMENT_CHANGELOG.md`](IMPROVEMENT_CHANGELOG.md) for the complete measured iteration history.
+
+---
 
 ## Benchmark integrity
 
-Benchmark v1 accidentally exposed enough behavior through public tests that the deterministic 2.4 workflow reached 100% without using an agent. That result was treated as a benchmark failure rather than a success.
+Benchmark v1 exposed too much information through its public test suites. A deterministic workflow reached 100% without meaningful agent participation, so that result was treated as a **benchmark failure**, not a success.
 
-Benchmark v2 fixes the leakage:
+Benchmark v2 separates public verification inputs from evaluator-only scoring material:
 
 ```text
 benchmark_v2/case_XXX/
-  case.json        # public metadata, no expected verdict
-  issue.md
+  case.json          public metadata; no expected verdict
+  issue.md           public bug contract
   original/
   patched/
 
 eval/benchmark_v2/
-  oracles.json     # evaluator-only
-  hidden_tests.json
+  oracles.json       evaluator-only verdicts
+  hidden_tests.json  evaluator-only nearby behavior
 ```
 
-The verification path does **not** load the evaluator oracle or hidden-test files. They are used only after a case verdict has been produced, to score the benchmark.
+The Iteration 5 verification path does **not** load `oracles.json` or `hidden_tests.json`. Those files are used only after a verdict has been produced, to score the benchmark.
+
+The separation can be checked directly:
+
+```powershell
+python scripts/build_benchmark_v2.py
+python scripts/audit_benchmark_v2.py
+```
+
+Expected integrity result:
+
+```text
+AUDIT PASSED: public cases are oracle-free and hidden behavior is separated as designed.
+```
+
+---
 
 ## Quick start
 
-Requirements:
+### Requirements
 
 - Python 3.11+
 - Ollama
 - `qwen3:0.6b`
 
+### Install
+
 ```powershell
+git clone https://github.com/ThunderKhan/refute.git
+cd refute
 python -m venv .venv
 .venv\Scripts\Activate.ps1
 python -m pip install -e ".[dev]"
 ollama pull qwen3:0.6b
+```
+
+### Build and audit the benchmark
+
+```powershell
 python scripts/build_benchmark_v2.py
+python scripts/audit_benchmark_v2.py
 python -m pytest
+```
+
+Frozen test-suite verification:
+
+```text
+72 passed in 63.16s
+```
+
+### Verify one patch
+
+```powershell
+refute verify benchmark_v2\case_002 --provider ollama --model qwen3:0.6b --iteration 5 --llm-timeout 30
+```
+
+Representative result:
+
+```text
+case: case_002
+original tests: FAIL
+patched tests:  PASS
+challenge outcomes: remaining_requirement_counterexample
+verdict: partial_fix
+```
+
+### Reproduce the final benchmark
+
+```powershell
 refute eval-advanced benchmark_v2 --oracle-root eval\benchmark_v2 --provider ollama --model qwen3:0.6b --iteration 5 --llm-timeout 30
 ```
 
-For a step-by-step reproduction procedure and expected artifact paths, see [`REPRODUCTION_GUIDE.md`](REPRODUCTION_GUIDE.md).
+Expected headline metrics:
 
-## Evidence and trajectories
+```text
+completed cases: 10
+errors: 0
+verdict accuracy: 100.0%
+false acceptance rate: 0.0%
+challenge counterexamples: 4
+probe planner fallback cases: 0
+average runtime: 5.077s
+```
 
-Each verification run writes evidence under:
+For the full clean-environment procedure, see [`REPRODUCTION_GUIDE.md`](REPRODUCTION_GUIDE.md).
+
+---
+
+## Evidence and reproducibility
+
+Every advanced run persists evidence under:
 
 ```text
 artifacts/runs/<run_id>/
 ```
 
-Aggregate benchmark artifacts are written under:
+Aggregate benchmark outputs are written to:
 
 ```text
 artifacts/eval/advanced_iteration_5_benchmark_v2/
+  summary.json
+  cases.jsonl
+  cases.partial.jsonl
+  report.md
 ```
 
-Representative development trajectories are preserved under `traces/`. They record human instructions, observable tool actions, failures, retries, verification results, and checkpoints without exposing private chain-of-thought.
+Development trajectories are preserved under [`traces/`](traces/). They capture human instructions, observable tool actions, retries, failures, checkpoints, and measured results without reconstructing private chain-of-thought.
 
-## Scope and limitations
-
-The final 100.0% result is **only a result on the ten-case controlled Benchmark v2**. It is not a claim that `refute` verifies arbitrary repositories or patches with 100% accuracy.
-
-The current MVP intentionally supports:
-
-- Python benchmark cases;
-- pytest-based deterministic execution;
-- a small public-contract vocabulary used by the deterministic probe compiler;
-- local Ollama or a generic OpenAI-compatible provider through the existing provider abstraction.
-
-It does not claim formal correctness, unrestricted repository execution, arbitrary-language support, or production auto-merge safety.
-
-## Repository map
+The final Iteration 5 verification transcript is preserved at:
 
 ```text
-src/refute/                    core package
-src/refute/agents/             agent and deterministic probe components
-src/refute/benchmark/          evaluators and oracle loader
-benchmark/                     legacy controlled cases
-benchmark_v2/                  generated oracle-free public cases
-eval/benchmark_v2/             evaluator-only oracle + hidden behavior
-scripts/                       benchmark build/audit utilities
-tests/                         regression/unit tests
-traces/                        normalized development trajectories
+traces/trace-016-iteration-5/verification.txt
 ```
+
+---
+
+## Scope and safety boundary
+
+The current MVP is intentionally narrow.
+
+### Supported
+
+- Python benchmark cases;
+- pytest-based local execution;
+- issue descriptions supplied as public text;
+- original and patched code supplied as controlled fixture directories;
+- deterministic public-test execution;
+- a deliberately small public-contract vocabulary for deterministic probe compilation;
+- local Ollama or an OpenAI-compatible provider abstraction;
+- evidence-backed five-way verdicts.
+
+### Not claimed
+
+- arbitrary GitHub repository verification;
+- arbitrary programming-language support;
+- formal correctness proofs;
+- unrestricted execution of untrusted repositories;
+- authoritative security review;
+- automatic merging or deployment of patches;
+- universal 100% patch-verification accuracy.
+
+For the hackathon MVP, execution is limited to bundled/synthetic controlled repositories with explicit timeouts and no autonomous repository-changing actions.
+
+---
+
+## Project structure
+
+```text
+src/refute/
+  agents/                  agent roles + deterministic probe components
+  benchmark/               evaluation and oracle-loading code
+  cli.py                   command-line interface
+  executor.py              deterministic command execution
+  evidence.py              persisted evidence records
+  orchestrator.py          verification run state machine
+  verify_v5.py             frozen Iteration 5 verifier
+
+benchmark/                 original controlled benchmark fixtures
+benchmark_v2/              generated oracle-free public cases
+eval/benchmark_v2/         evaluator-only oracles + hidden checks
+scripts/                   benchmark build and integrity audit
+tests/                     unit and regression tests
+traces/                    normalized development trajectories
+```
+
+---
+
+## Documentation
+
+| Document | Purpose |
+|---|---|
+| [`PROBLEM_STATEMENT.md`](PROBLEM_STATEMENT.md) | user problem and product thesis |
+| [`PRD.md`](PRD.md) | product requirements and original design goals |
+| [`MVP.md`](MVP.md) | supported scope, milestones, and acceptance criteria |
+| [`ARCHITECTURE.md`](ARCHITECTURE.md) | verification architecture and component boundaries |
+| [`IMPROVEMENT_CHANGELOG.md`](IMPROVEMENT_CHANGELOG.md) | measured experiments, regressions, and design decisions |
+| [`TRAJECTORIES.md`](TRAJECTORIES.md) | human-readable index of coding-agent trajectories |
+| [`REPRODUCTION_GUIDE.md`](REPRODUCTION_GUIDE.md) | exact clean-environment reproduction procedure |
+| [`traces/`](traces/) | normalized per-iteration execution and development evidence |
+
+---
+
+## Design principle
+
+> **The breakthrough was not a better prompt. It was giving the model less responsibility.**
+
+`refute` uses the language model where semantic prioritization is useful, deterministic code where truth is mechanically observable, and evidence as the boundary between the two.
+
+---
 
 ## License
 
