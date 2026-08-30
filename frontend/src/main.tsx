@@ -6,6 +6,7 @@ import LiveVerifyPage from "./LiveVerifyPage";
 import "./styles.css";
 import "./polish.css";
 import "./live.css";
+import "./github-mode.css";
 
 const root = document.getElementById("root")!;
 const isLiveVerifyRoute = window.location.pathname === "/verify";
