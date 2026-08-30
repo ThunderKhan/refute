@@ -77,6 +77,21 @@ export type VerificationPayload = {
   nearby_adversary?: NearbyAdversaryPayload | null;
 };
 
+export type VerificationProgressEvent = {
+  stage: string;
+  detail: string;
+};
+
+export type GitHubVerificationJob = {
+  job_id: string;
+  status: "running" | "complete" | "error";
+  stage: string;
+  detail: string;
+  events: VerificationProgressEvent[];
+  result: VerificationPayload | null;
+  error: string | null;
+};
+
 const API_ROOT = import.meta.env.VITE_REFUTE_API ?? "http://127.0.0.1:8765";
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
@@ -89,6 +104,10 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     throw new Error(payload?.error ?? `refute API returned ${response.status}`);
   }
   return payload as T;
+}
+
+function sleep(ms: number) {
+  return new Promise((resolve) => window.setTimeout(resolve, ms));
 }
 
 export async function listCases(): Promise<DashboardCase[]> {
@@ -115,8 +134,11 @@ export async function inspectGitHubPR(url: string): Promise<GitHubPRMetadata> {
   });
 }
 
-export async function verifyGitHubPR(url: string): Promise<VerificationPayload> {
-  return request<VerificationPayload>("/api/github/verify", {
+export async function verifyGitHubPR(
+  url: string,
+  onProgress?: (job: GitHubVerificationJob) => void,
+): Promise<VerificationPayload> {
+  const started = await request<{ job_id: string }>("/api/github/verify/start", {
     method: "POST",
     body: JSON.stringify({
       url,
@@ -127,4 +149,17 @@ export async function verifyGitHubPR(url: string): Promise<VerificationPayload> 
       execution_timeout: 30,
     }),
   });
+
+  while (true) {
+    const job = await request<GitHubVerificationJob>(`/api/github/jobs/${encodeURIComponent(started.job_id)}`);
+    onProgress?.(job);
+    if (job.status === "complete") {
+      if (!job.result) throw new Error("verification completed without a result");
+      return job.result;
+    }
+    if (job.status === "error") {
+      throw new Error(job.error ?? "verification failed");
+    }
+    await sleep(700);
+  }
 }
