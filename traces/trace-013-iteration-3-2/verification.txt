@@ -1,25 +1,35 @@
-Verification status: PENDING LOCAL RUN
+Verification status: VERIFIED LOCALLY; NEGATIVE EXPERIMENT
 
-Iteration 3.1 observed result supplied by human:
-- python -m pytest: 56 passed in 43.99s
-- Benchmark v2: 30.0% accuracy, 0.0% FAR, 0.0% Challenger case yield, 0 counterexamples, 20.438s average runtime
-- most suite-repaired cases exhausted two generation attempts without producing an executable grounded challenge
+Human verification supplied on 2026-08-30:
 
-Iteration 3.2 hypothesis:
-Replace free-form exact quote reproduction with deterministic contract spans and model-selected contract IDs. Remove the separate Investigator call from the challenge path.
+1. `python -m pytest`
+   - 60 passed in 47.71s
 
-Required local checks:
-1. git pull
-2. python -m pytest
-3. python scripts/build_benchmark_v2.py
-4. targeted case_001, case_002, case_003, case_006, case_007 with --iteration 3.2
-5. full Benchmark v2 evaluation with --iteration 3.2
+2. `python scripts/build_benchmark_v2.py`
+   - built 10 public cases
 
-Success signals:
-- materially fewer challenge_generation_failures than Iteration 3.1;
-- executable challenge candidates on suite-repaired cases;
-- useful counterexamples on partial/regression cases without access to hidden tests;
-- FAR remains materially below Iteration 2.4's 57.1%;
-- runtime improves from Iteration 3.1 by eliminating the Investigator call.
+3. Targeted Iteration 3.2 runs
+   - case_001: 2 candidates, 0 generation failures, outcomes `non_decisive, non_decisive`, verdict inconclusive
+   - case_002: 2 candidates, 0 generation failures, outcomes `non_decisive, non_decisive`, verdict inconclusive
+   - case_003: 2 candidates, 0 generation failures, outcomes `non_decisive, non_decisive`, verdict inconclusive
+   - case_006: 1 candidate, 1 generation failure, outcome `non_decisive`, verdict inconclusive
+   - case_007: 1 candidate, 1 generation failure, outcome `invalid_execution`, verdict inconclusive
 
-Do not claim Iteration 3.2 improvement until a clean local result is supplied.
+4. Full Benchmark v2 Iteration 3.2
+   - completed cases: 10/10
+   - errors: 0
+   - verdict accuracy: 30.0%
+   - false acceptance rate: 0.0%
+   - Challenger case yield: 0.0%
+   - challenge counterexamples: 0
+   - challenge generation failures: 9
+   - average runtime: 25.966s/case
+
+Interpretation:
+- contract IDs reduced exact-quote brittleness on some targeted runs, but useful counterexample yield remained zero;
+- the main failure moved from formatting/grounding rejection to semantic qualification: executable fail/fail tests were often classified `non_decisive` because the model-declared kind did not safely justify remaining-requirement evidence;
+- generation instability remained significant in the batch and latency became worse than 3.1;
+- Iteration 3.2 is preserved as a negative experiment, not an improvement claim.
+
+Next experiment:
+Iteration 3.3 retains deterministic contract IDs but adds a separate strict contract-entailment Critic. Executable patch-failing tests can affect the verdict only if the Critic confirms that the generated assertion follows directly from the selected public contract span.
