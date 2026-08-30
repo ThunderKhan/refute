@@ -67,55 +67,25 @@ Decision: preserve Iteration 3 as a safety-positive / accuracy-negative experime
 
 ## Advanced Iteration 3.1 — exact-quote grounded Challenger
 
-Benchmark v2 result:
-- completed cases: **10/10**
-- errors: **0**
-- accuracy: **30.0%**
-- FAR: **0.0%**
-- Challenger case yield: **0.0%**
-- executable counterexamples: **0**
-- average runtime: **20.438s/case**
-
-Interpretation: exact quote copying was too brittle for `qwen3:0.6b`; the stricter grounding interface reduced fabrication but collapsed useful generation.
+Iteration 3.1 required one typed candidate and an exact issue quote. Local measurement fell to **30.0% accuracy, 0.0% FAR, 0.0% yield, and 20.438s/case**. The interface was too brittle for the small local model.
 
 Decision: preserve 3.1 as a negative experiment.
 
 ## Advanced Iteration 3.2 — deterministic contract IDs
 
-Benchmark v2 result:
-- completed cases: **10/10**
-- errors: **0**
-- accuracy: **30.0%**
-- FAR: **0.0%**
-- Challenger case yield: **0.0%**
-- executable counterexamples: **0**
-- challenge generation failures: **9**
-- average runtime: **25.966s/case**
-
-Interpretation: deterministic contract IDs improved grounding ergonomics but did not solve semantic evidence qualification.
+Exact quote copying was replaced with deterministic issue-contract spans and model-selected IDs; the Investigator call was removed from the challenge path. Benchmark v2 still measured **30.0% accuracy, 0.0% FAR, 0.0% yield, 0 counterexamples, 9 generation failures, and 25.966s/case**.
 
 Decision: preserve 3.2 as a negative experiment.
 
 ## Advanced Iteration 3.3 — contract-entailment critic
 
-Benchmark v2 result:
-- completed cases: **10/10**
-- errors: **0**
-- accuracy: **30.0%**
-- FAR: **0.0%**
-- Challenger case yield: **0.0%**
-- executable counterexamples: **0**
-- challenge generation failures: **7**
-- challenge critic failures: **0**
-- average runtime: **27.624s/case**
-
-Interpretation: the Critic was operationally reliable but systematically rejected patch-failing generated assertions. Independent criticism kept the system safe but could not rescue low-quality free-form test generation.
+A separate Critic was introduced to qualify patch-failing generated assertions against the selected public contract. Benchmark v2 measured **30.0% accuracy, 0.0% FAR, 0.0% yield, 0 counterexamples, 7 generation failures, 0 critic failures, and 27.624s/case**.
 
 Decision: stop the 3.x prompt-tuning line.
 
 ## Advanced Iteration 4 — intent-first Challenger
 
-Iteration 4 removed Python/pytest authoring from the model. Challenger emitted a typed semantic intent, a separate Critic validated it, and the harness compiled pytest deterministically.
+Iteration 4 removed Python/pytest authoring from the model. Challenger emitted a typed semantic intent, a Critic validated it, and deterministic Python compiled it into pytest.
 
 Benchmark v2 result:
 - completed cases: **10/10**
@@ -210,3 +180,50 @@ Interpretation: **on Benchmark v2, agent probe prioritization was not necessary 
 This null ablation result changes the attribution of the final benchmark gain: Benchmark v2 strongly supports the move from model-authored semantics to deterministic contract-derived evidence, but it does not demonstrate that the LLM planner itself improved verdict accuracy.
 
 Decision: preserve the result and do not retune the verifier. Validate both the frozen Iteration 5 system and the deterministic-order ablation on a post-freeze unseen holdout.
+
+## Post-freeze Holdout v1 — first unseen evaluation
+
+Holdout v1 contains **12 new cases** authored only after Iteration 5 and the Benchmark v2 planner ablation were frozen. The builder/audit were committed before evaluation, and the public material was frozen with SHA-256:
+
+```text
+c2604717e69fb99c2d30e17ee4f586d4463e3bd032e55344684e9db9992b5cb1
+```
+
+The audit confirmed 12 public cases, 12 evaluator-only oracles, and no verdict oracle in public material.
+
+The first static-baseline attempt timed out at the local model provider before producing a result. This is recorded as an execution failure and is not converted into an accuracy score.
+
+### Deterministic-order ablation on Holdout v1
+
+- completed cases: **12/12**
+- verdict accuracy: **83.3%**
+- false acceptance rate: **20.0%**
+- challenge counterexamples: **6**
+- average runtime: **2.698s/case**
+- wrong cases: `holdout_010`, `holdout_012`
+
+### Frozen Iteration 5 on Holdout v1
+
+- completed cases: **12/12**
+- errors: **0**
+- verdict accuracy: **83.3%**
+- false acceptance rate: **20.0%**
+- Challenger case yield: **60.0%**
+- challenge counterexamples: **6**
+- planner/generation failures: **2**
+- planner fallback cases: **2**
+- average runtime: **9.989s/case**
+- wrong cases: `holdout_010`, `holdout_012`
+
+Interpretation:
+- the post-freeze set exposes a real generalization gap: **100.0% → 83.3% accuracy** and **0.0% → 20.0% FAR** relative to Benchmark v2;
+- nevertheless, 10 of 12 unseen cases were classified correctly without verifier tuning after the holdout was frozen;
+- the same two cases were missed by both deterministic ordering and the LLM planner;
+- the planner again provided **no measured verdict improvement** under the tested two-probe budget;
+- the planner path was substantially slower and incurred two provider/planner failures that triggered deterministic fallback.
+
+Decision: do **not** tune Iteration 5 to Holdout v1. Preserve the result as the project's strongest evidence about external validity within the stated synthetic MVP domain.
+
+Updated architectural lesson:
+
+> When requirements are mechanically derivable, deterministic evidence should own them completely. Agentic reasoning should be reserved for ambiguity that deterministic machinery cannot represent, such as the bounded nearby-test selection used in the real-repository workflow.
