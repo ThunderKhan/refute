@@ -52,8 +52,6 @@ The four false `complete_fix` verdicts were case_002, case_003, case_006, and ca
 
 ## Advanced Iteration 3 — Challenger
 
-Hypothesis: Challenger-generated nearby tests can recover hidden partial fixes and regressions after the public trigger appears repaired.
-
 Benchmark v2 result:
 - completed cases: **10/10**
 - errors: **0**
@@ -84,14 +82,10 @@ Decision: preserve 3.1 as a negative experiment.
 
 ## Advanced Iteration 3.2 — deterministic contract IDs
 
-Hypothesis: extract issue-contract spans deterministically, assign stable IDs, and ask Challenger to select an ID instead of reproducing a free-form quote.
-
 Local verification:
 - `python -m pytest`: **60 passed in 47.71s**;
-- targeted case_001, case_002, and case_003 produced two executable candidates with zero generation failures, but all were `non_decisive`;
-- targeted case_006 produced one `non_decisive` candidate and one generation failure;
-- targeted case_007 produced one `invalid_execution` candidate and one generation failure;
-- all five targeted suite-repaired cases remained `inconclusive`.
+- targeted case_001, case_002, and case_003 produced executable candidates but no qualified counterexamples;
+- targeted case_006 and case_007 still showed generation/invalid-execution failures.
 
 Benchmark v2 result:
 - completed cases: **10/10**
@@ -103,27 +97,62 @@ Benchmark v2 result:
 - challenge generation failures: **9**
 - average runtime: **25.966s/case**
 
-Interpretation:
-- deterministic contract IDs improved the interface relative to exact quote copying on several targeted runs, but did not recover useful counterexamples;
-- the dominant failure shifted from pure generation rejection to **semantic qualification**: generated tests often executed but were `non_decisive` because the model-selected evidence kind did not justify treating fail/fail as a remaining requirement;
-- batch generation remained unstable and latency worsened;
-- simply making grounding references easier is insufficient. An executable failing test still needs independent validation that its assertion is actually entailed by the selected public contract.
+Interpretation: deterministic contract IDs improved grounding ergonomics but did not solve semantic evidence qualification. Generated tests could execute while still failing to justify a negative verdict.
 
-Decision: preserve 3.2 as another measured negative experiment. Keep deterministic contract extraction, but separate **test proposal** from **evidence qualification**.
+Decision: preserve 3.2 as a negative experiment. Separate test proposal from evidence qualification.
 
 ## Advanced Iteration 3.3 — contract-entailment critic
 
-Hypothesis: retain 3.2's deterministic contract IDs, but require every executable patch-failing challenge to pass a second, strict contract-entailment critic before it can influence the verdict.
+Hypothesis: require patch-failing generated challenges to pass a second strict contract-entailment critic before they can influence the verdict.
 
-Changes:
-- Challenger still proposes a single contract-ID-grounded pytest test;
-- deterministic execution first categorizes the observed shape as survived, regression candidate, remaining-failure candidate, invalid, or non-decisive;
-- only patch-failing candidates are sent to a separate Critic agent;
-- the Critic receives only the selected public contract span and generated test, and returns `supported: true|false` with a short reason;
-- a regression candidate becomes `regression_counterexample` only if the Critic confirms the assertion is directly supported by the public contract;
-- a fail/fail candidate becomes `remaining_requirement_counterexample` only when both the Challenger declares `remaining_requirement` and the Critic confirms direct contract support;
-- unsupported executable failures feed back into the bounded Challenger retry instead of becoming verdict evidence;
-- patch-passing challenges do not pay for the Critic call;
-- oracle and hidden tests remain unavailable to both Challenger and Critic.
+Local verification:
+- `python -m pytest`: **63 passed in 55.76s**;
+- targeted case_001: two executable failures were both rejected as `unsupported_counterexample`;
+- targeted case_002: one generated candidate reached the Critic and was rejected as unsupported;
+- targeted case_003: two generated candidates reached the Critic and were both rejected;
+- targeted case_006: one generated candidate reached the Critic and was rejected;
+- targeted case_007: the candidate produced `invalid_execution`, so the Critic was not called.
 
-Target: recover useful counterexamples without reintroducing Iteration 3's fabricated-failure false negatives. Status: implementation complete; local verification pending.
+Benchmark v2 result:
+- completed cases: **10/10**
+- errors: **0**
+- accuracy: **30.0%**
+- FAR: **0.0%**
+- Challenger case yield: **0.0%**
+- executable counterexamples: **0**
+- challenge generation failures: **7**
+- challenge critic failures: **0**
+- average runtime: **27.624s/case**
+
+Interpretation:
+- the Critic was operationally reliable (zero critic failures) but systematically rejected every patch-failing generated assertion it saw;
+- the system therefore stayed safe but remained incapable of recovering the intentionally hidden partial/regression cases;
+- latency worsened because the pipeline paid for both free-form test generation and semantic criticism;
+- after 3.1–3.3, further prompt-format tuning is no longer justified. The structural problem is that the model is being asked to author executable pytest syntax and semantic expectations at the same time.
+
+Decision: **stop the 3.x prompt-tuning line here.** Preserve 3.3 as evidence that independent criticism alone cannot rescue low-quality free-form generated tests.
+
+## Advanced Iteration 4 — intent-first Challenger + deterministic test compiler
+
+Hypothesis: remove Python test authoring from the Challenger entirely. Ask the model only for a typed semantic test intent, validate that intent against the public contract, then compile the test deterministically. This should reduce syntax/API hallucination and let the Critic judge a compact semantic object rather than arbitrary generated source code.
+
+Structural changes:
+- the harness deterministically extracts contract IDs from the public issue and callable targets from the public test import surface;
+- Challenger returns only: `kind`, `contract_id`, `target`, JSON arguments, a typed expectation (`equals`, `raises`, or `len_lte_arg`), and rationale;
+- Challenger never emits pytest/Python source;
+- a separate intent Critic judges whether the structured input/expectation is directly supported by the selected public contract;
+- unsupported intents are rejected before execution and can feed one bounded retry;
+- supported intents are compiled by deterministic Python into a focused pytest test;
+- generated code therefore cannot invent imports, arbitrary helper logic, or malformed test syntax;
+- deterministic execution on original and patch still decides regression/remaining/survived evidence;
+- a negative verdict requires critic-approved executable evidence;
+- `complete_fix` requires two distinct critic-approved nearby intents to survive, preventing a single easy generated case from certifying completeness;
+- oracle and hidden tests remain unavailable to Challenger, Critic, compiler, and verifier.
+
+Success criteria against the frozen Benchmark v2 history:
+- recover at least some of case_002/case_003/case_006/case_007 as critic-approved counterexamples;
+- materially exceed the 30.0% accuracy plateau from 3.1–3.3;
+- retain FAR below Iteration 2.4's 57.1%;
+- reduce invalid-execution failures because test source is compiled deterministically rather than authored by the model.
+
+Status: implementation complete; local verification pending. Do not claim an Iteration 4 improvement until the human supplies a clean local run.
