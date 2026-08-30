@@ -6,10 +6,10 @@ from pathlib import Path
 
 from mcp.server import MCPServer
 
-from .github_pr import fetch_github_pr_metadata, prepare_github_pr_case
-from .llm import provider_from_env
-from .real_repo_adversary import run_nearby_adversary
-from .verify_v5 import verify_case_v5
+from refute.github_pr import fetch_github_pr_metadata, prepare_github_pr_case
+from refute.llm import provider_from_env
+from refute.real_repo_adversary import run_nearby_adversary
+from refute.verify_v5 import verify_case_v5
 
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
