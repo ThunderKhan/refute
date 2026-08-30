@@ -1,10 +1,6 @@
 <div align="center">
 
-# refute
-
-**Evidence-backed patch verification through adversarial execution.**
-
-A patch should not be trusted because it looks correct. It should survive attempts to falsify it.
+<img src="assets/refute-hero.png" alt="refute — evidence-backed patch verification" width="100%">
 
 ![Python](https://img.shields.io/badge/Python-3.11%2B-3776AB?logo=python&logoColor=white)
 ![Runtime Dependencies](https://img.shields.io/badge/runtime%20dependencies-zero-00b894)
@@ -14,7 +10,7 @@ A patch should not be trusted because it looks correct. It should survive attemp
 
 **Frontier Engineering Challenge 2026**
 
-[Why refute?](#why-refute) · [How it works](#how-it-works) · [Measured results](#measured-results) · [Quick start](#quick-start) · [Evidence](#evidence-and-reproducibility) · [Docs](#documentation)
+[Why refute?](#why-refute) · [How it works](#how-it-works) · [Verdicts](#verdict-model) · [Measured results](#measured-results) · [Quick start](#quick-start) · [Evidence](#evidence-and-reproducibility) · [Docs](#documentation)
 
 </div>
 
@@ -37,9 +33,31 @@ A patch can:
 
 The system runs the original and patched code, derives nearby checks from the public issue contract, executes those checks against both versions, and returns a verdict that is constrained by observed evidence.
 
+### A concrete falsification
+
+`case_002` is the simplest example of the core idea: the reported lower boundary is repaired, but the same public contract still requires the upper boundary to work.
+
+<p align="center">
+  <img src="assets/refute-case-002-falsification.png" alt="case_002 falsification walkthrough showing a partial fix discovered by refute" width="100%">
+</p>
+
 ---
 
 ## How it works
+
+The final architecture separates semantic prioritization from mechanically observable truth.
+
+The governing design rule is:
+
+> **Agents prioritize. Deterministic tools observe. Evidence constrains the verdict.**
+
+<p align="center">
+  <img src="assets/refute-architecture.png" alt="refute architecture: agents prioritize, deterministic tools observe, evidence constrains the verdict" width="100%">
+</p>
+
+The final workflow deliberately gives the model a narrow job. It does **not** author arbitrary pytest code or invent the final verdict. Mechanically derivable checks are compiled deterministically from the public issue contract; the agent only prioritizes which valid probes to try first.
+
+At a high level:
 
 ```text
 issue + original + patched code
@@ -76,17 +94,15 @@ issue + original + patched code
           evidence-backed verdict
 ```
 
-The governing design rule is:
-
-> **Agents prioritize. Deterministic tools observe. Evidence constrains the verdict.**
-
-The final workflow deliberately gives the model a narrow job. It does **not** author arbitrary pytest code or invent the final verdict. Mechanically derivable checks are compiled deterministically from the public issue contract; the agent only prioritizes which valid probes to try first.
-
 ---
 
 ## Verdict model
 
-Every run resolves to one of five outcomes:
+Every run resolves to one of five outcomes. The verdict is determined by the observed evidence pattern, not by an unconstrained model judgment.
+
+<p align="center">
+  <img src="assets/refute-verdict-system.png" alt="refute five-way verdict system and evidence patterns" width="100%">
+</p>
 
 | Verdict | Meaning |
 |---|---|
@@ -117,6 +133,10 @@ All measurements below use local Ollama with `qwen3:0.6b` at temperature `0`.
 | Intent-first 4 | 30.0% | 0.0% | 13.026s |
 | **Deterministic contract probes 5** | **100.0%** | **0.0%** | **5.077s** |
 
+<p align="center">
+  <img src="assets/refute-results-comparison.png" alt="refute results comparison between Baseline v2 and Iteration 5" width="100%">
+</p>
+
 ### Frozen Iteration 5 result
 
 - **10 / 10 correct verdicts**
@@ -146,6 +166,10 @@ The strongest improvement did **not** come from a better prompt.
 Early iterations gave the model increasing responsibility: generating pytest source, grounding tests in issue text, selecting contract IDs, and then having a second model criticize generated tests. Those systems became safer, but accuracy stalled and runtime increased.
 
 Iteration 4 removed Python generation but still asked the model to invent test semantics. Accuracy remained at 30%.
+
+<p align="center">
+  <img src="assets/refute-engineering-journey.png" alt="refute engineering journey from prompt-heavy experiments to deterministic evidence-backed verification" width="100%">
+</p>
 
 Iteration 5 changed the responsibility boundary:
 
@@ -356,6 +380,7 @@ eval/benchmark_v2/         evaluator-only oracles + hidden checks
 scripts/                   benchmark build and integrity audit
 tests/                     unit and regression tests
 traces/                    normalized development trajectories
+assets/                    README visual assets
 ```
 
 ---
