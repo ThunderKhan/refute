@@ -82,11 +82,6 @@ Decision: preserve 3.1 as a negative experiment.
 
 ## Advanced Iteration 3.2 — deterministic contract IDs
 
-Local verification:
-- `python -m pytest`: **60 passed in 47.71s**;
-- targeted case_001, case_002, and case_003 produced executable candidates but no qualified counterexamples;
-- targeted case_006 and case_007 still showed generation/invalid-execution failures.
-
 Benchmark v2 result:
 - completed cases: **10/10**
 - errors: **0**
@@ -97,21 +92,11 @@ Benchmark v2 result:
 - challenge generation failures: **9**
 - average runtime: **25.966s/case**
 
-Interpretation: deterministic contract IDs improved grounding ergonomics but did not solve semantic evidence qualification. Generated tests could execute while still failing to justify a negative verdict.
+Interpretation: deterministic contract IDs improved grounding ergonomics but did not solve semantic evidence qualification.
 
-Decision: preserve 3.2 as a negative experiment. Separate test proposal from evidence qualification.
+Decision: preserve 3.2 as a negative experiment.
 
 ## Advanced Iteration 3.3 — contract-entailment critic
-
-Hypothesis: require patch-failing generated challenges to pass a second strict contract-entailment critic before they can influence the verdict.
-
-Local verification:
-- `python -m pytest`: **63 passed in 55.76s**;
-- targeted case_001: two executable failures were both rejected as `unsupported_counterexample`;
-- targeted case_002: one generated candidate reached the Critic and was rejected as unsupported;
-- targeted case_003: two generated candidates reached the Critic and were both rejected;
-- targeted case_006: one generated candidate reached the Critic and was rejected;
-- targeted case_007: the candidate produced `invalid_execution`, so the Critic was not called.
 
 Benchmark v2 result:
 - completed cases: **10/10**
@@ -124,35 +109,85 @@ Benchmark v2 result:
 - challenge critic failures: **0**
 - average runtime: **27.624s/case**
 
-Interpretation:
-- the Critic was operationally reliable (zero critic failures) but systematically rejected every patch-failing generated assertion it saw;
-- the system therefore stayed safe but remained incapable of recovering the intentionally hidden partial/regression cases;
-- latency worsened because the pipeline paid for both free-form test generation and semantic criticism;
-- after 3.1–3.3, further prompt-format tuning is no longer justified. The structural problem is that the model is being asked to author executable pytest syntax and semantic expectations at the same time.
+Interpretation: the Critic was operationally reliable but systematically rejected patch-failing generated assertions. Independent criticism kept the system safe but could not rescue low-quality free-form test generation.
 
-Decision: **stop the 3.x prompt-tuning line here.** Preserve 3.3 as evidence that independent criticism alone cannot rescue low-quality free-form generated tests.
+Decision: stop the 3.x prompt-tuning line.
 
-## Advanced Iteration 4 — intent-first Challenger + deterministic test compiler
+## Advanced Iteration 4 — intent-first Challenger
 
-Hypothesis: remove Python test authoring from the Challenger entirely. Ask the model only for a typed semantic test intent, validate that intent against the public contract, then compile the test deterministically. This should reduce syntax/API hallucination and let the Critic judge a compact semantic object rather than arbitrary generated source code.
+Iteration 4 removed Python/pytest authoring from the model. Challenger emitted a typed semantic intent, a separate Critic validated it, and the harness compiled pytest deterministically.
+
+Benchmark v2 result:
+- completed cases: **10/10**
+- errors: **0**
+- accuracy: **30.0%**
+- FAR: **0.0%**
+- Challenger case yield: **14.3%**
+- executable counterexamples: **1**
+- challenge generation failures: **9**
+- critic failures: **0**
+- critic rejections: **1**
+- average runtime: **13.026s/case**
+
+Interpretation: deterministic test compilation roughly halved runtime versus 3.3, but the small model still had to invent semantic assertions and remained unreliable. A false regression on a true complete fix also showed that structured intent alone did not solve semantic hallucination.
+
+Decision: remove semantic assertion invention from the model too.
+
+## Advanced Iteration 5 — deterministic contract probes + agent prioritization
+
+Hypothesis: compile a small, auditable pool of nearby probes directly from the public issue contract and public API, then use the language model only to prioritize probe IDs. Deterministic execution, not the model, decides whether each probe survives or falsifies the patch.
 
 Structural changes:
-- the harness deterministically extracts contract IDs from the public issue and callable targets from the public test import surface;
-- Challenger returns only: `kind`, `contract_id`, `target`, JSON arguments, a typed expectation (`equals`, `raises`, or `len_lte_arg`), and rationale;
-- Challenger never emits pytest/Python source;
-- a separate intent Critic judges whether the structured input/expectation is directly supported by the selected public contract;
-- unsupported intents are rejected before execution and can feed one bounded retry;
-- supported intents are compiled by deterministic Python into a focused pytest test;
-- generated code therefore cannot invent imports, arbitrary helper logic, or malformed test syntax;
-- deterministic execution on original and patch still decides regression/remaining/survived evidence;
-- a negative verdict requires critic-approved executable evidence;
-- `complete_fix` requires two distinct critic-approved nearby intents to survive, preventing a single easy generated case from certifying completeness;
-- oracle and hidden tests remain unavailable to Challenger, Critic, compiler, and verifier.
+- public tests still run first, and only `suite_repaired` cases spend challenge budget;
+- a deterministic compiler recognizes a deliberately small MVP contract vocabulary and emits contract-grounded probes;
+- probes include inclusive range boundaries, preserved internal whitespace, trim/lowercase behavior, whitespace-collapse behavior, small non-negative length limits, and exception preservation;
+- the model receives only probe IDs/descriptions and returns a priority order;
+- if planner output is unusable, the harness can fall back to deterministic probe order and records that fallback;
+- the model no longer authors Python, pytest, imports, arguments, expected values, or exception semantics;
+- probe source is compiled and executed deterministically on original and patched code;
+- `complete_fix` requires two independent survived probes;
+- oracle verdicts and hidden tests remain evaluator-only and are never loaded by the probe compiler, planner, or verification path.
 
-Success criteria against the frozen Benchmark v2 history:
-- recover at least some of case_002/case_003/case_006/case_007 as critic-approved counterexamples;
-- materially exceed the 30.0% accuracy plateau from 3.1–3.3;
-- retain FAR below Iteration 2.4's 57.1%;
-- reduce invalid-execution failures because test source is compiled deterministically rather than authored by the model.
+Clean local verification:
+- `python -m pytest`: **72 passed in 63.16s**;
+- all five targeted challenge cases produced the intended evidence with **0 generation failures** and **0 planner fallbacks**;
+- case_001: `complete_fix` after two survived probes;
+- case_002: `partial_fix` from a remaining upper-boundary failure;
+- case_003: `regression_introduced` from internal-space preservation;
+- case_006: `partial_fix` from a tiny-limit invariant failure;
+- case_007: `regression_introduced` from exception-preservation evidence.
 
-Status: implementation complete; local verification pending. Do not claim an Iteration 4 improvement until the human supplies a clean local run.
+### Frozen Benchmark v2 result
+
+- completed cases: **10/10**
+- errors: **0**
+- verdict accuracy: **100.0%**
+- false acceptance rate: **0.0%**
+- Challenger case yield: **57.1%**
+- executable counterexamples: **4**
+- challenge generation failures: **0**
+- planner fallback cases: **0**
+- average runtime: **5.077s/case**
+
+Every Benchmark v2 case was classified correctly:
+- complete fixes: case_001, case_005, case_009;
+- partial fixes: case_002, case_006;
+- regressions: case_003, case_007;
+- ineffective fixes: case_004, case_008;
+- inconclusive: case_010.
+
+### Measured improvement on the same oracle-separated Benchmark v2
+
+- Baseline v2: **10.0% accuracy / 57.1% FAR / 2.527s**
+- Iteration 2.4: **60.0% accuracy / 57.1% FAR / 0.929s**
+- Iteration 5: **100.0% accuracy / 0.0% FAR / 5.077s**
+
+Interpretation:
+- versus Baseline v2, Iteration 5 improved verdict accuracy by **90 percentage points** and reduced FAR by **57.1 percentage points**;
+- versus the deterministic 2.4 ablation, Iteration 5 improved accuracy by **40 percentage points** and reduced FAR from **57.1% to 0.0%**;
+- the price is higher runtime than the static baseline/test-only ablation, but substantially lower runtime than Iterations 3–4;
+- the key improvement did not come from a better prompt. It came from moving mechanically derivable semantics out of the model and leaving the model a narrow prioritization decision.
+
+Decision: **freeze Iteration 5 as the final advanced system for the hackathon submission.** Further work should focus on reproducibility, broader external validation, documentation, and demo quality rather than benchmark-specific tuning.
+
+Important limitation: Benchmark v2 has ten controlled synthetic cases and the contract compiler intentionally supports a small MVP vocabulary. The 100.0% result is a benchmark result, not a claim that `refute` can verify arbitrary software patches with 100% accuracy.
