@@ -5,13 +5,14 @@
 ![Python](https://img.shields.io/badge/Python-3.11%2B-3776AB?logo=python&logoColor=white)
 ![Core Runtime Dependencies](https://img.shields.io/badge/core%20runtime%20dependencies-zero-00b894)
 ![Benchmark](https://img.shields.io/badge/Benchmark%20v2-10%2F10%20correct-2ea44f)
-![False Acceptance](https://img.shields.io/badge/false%20acceptance-0.0%25-2ea44f)
+![Holdout](https://img.shields.io/badge/Post--freeze%20holdout-83.3%25-2ea44f)
+![False Acceptance](https://img.shields.io/badge/Benchmark%20FAR-0.0%25-2ea44f)
 ![MCP](https://img.shields.io/badge/MCP-stdio-8b5cf6)
 ![License](https://img.shields.io/badge/license-MIT-2ea44f)
 
 **Frontier Engineering Challenge 2026**
 
-[Why refute?](#why-refute) · [How it works](#how-it-works) · [Real PRs](#real-github-pr-workflow) · [Measured results](#measured-results) · [Quick start](#quick-start) · [MCP](#coding-agent-integration-mcp) · [Evidence](#evidence-and-reproducibility)
+[Why refute?](#why-refute) · [How it works](#how-it-works) · [Real PRs](#real-github-pr-workflow) · [Measured results](#measured-results) · [Post-freeze validation](#post-freeze-validation) · [Quick start](#quick-start) · [MCP](#coding-agent-integration-mcp)
 
 </div>
 
@@ -49,9 +50,11 @@ The governing design rule is:
   <img src="assets/refute-architecture.png" alt="refute architecture: agents prioritize, deterministic tools observe, evidence constrains the verdict" width="100%">
 </p>
 
-The final Benchmark v2 architecture deliberately gives the model a narrow job. It does **not** author arbitrary pytest code or invent the final verdict. Mechanically recognizable public requirements are compiled into deterministic probes; the agent only prioritizes which valid probes to try first; deterministic execution decides what happened.
+The final Benchmark v2 architecture deliberately gives the model a narrow job. It does **not** author arbitrary pytest code or invent the final verdict. Mechanically recognizable public requirements are compiled into deterministic probes; deterministic execution decides what happened.
 
-For compatible real GitHub PRs, refute adds a product-facing reproduction path: patch-authored changed pytest tests can be replayed against the base revision to establish the reported trigger, and a bounded nearby-test adversary can prioritize existing tests when the deterministic contract compiler has no matching vocabulary.
+Iteration 5 retains a bounded model planner that can prioritize valid probe IDs, but the post-freeze ablation and holdout show an important result: **within the tested contract domain, the planner did not improve verdict accuracy over deterministic probe order.** The main measured gain came from moving mechanically derivable semantics out of model generation and into deterministic evidence.
+
+For compatible real GitHub PRs, refute adds a product-facing reproduction path: patch-authored changed pytest tests can be replayed against the base revision to establish the reported trigger, and a bounded nearby-test adversary can prioritize existing tests when the deterministic contract compiler has no matching vocabulary. That is where semantic agentic prioritization remains useful: selecting among ambiguous, pre-existing test candidates rather than inventing executable truth.
 
 ---
 
@@ -111,7 +114,7 @@ Dependency installation and repository tests execute third-party code locally. R
 
 ## Measured results
 
-The hackathon evaluation uses **Benchmark v2**, a controlled ten-case benchmark with public case material separated from evaluator-only verdicts and hidden checks. All frozen measurements below use local Ollama with `qwen3:0.6b` at temperature `0`.
+The development benchmark is **Benchmark v2**, a controlled ten-case benchmark with public case material separated from evaluator-only verdicts and hidden checks. Frozen measurements use local Ollama with `qwen3:0.6b` at temperature `0`.
 
 | System | Verdict accuracy | False acceptance rate | Avg runtime |
 |---|---:|---:|---:|
@@ -139,7 +142,54 @@ The hackathon evaluation uses **Benchmark v2**, a controlled ten-case benchmark 
 - **0 planner fallbacks**
 - **5.077s average runtime per case**
 
-> **Important:** 100% is the measured result on this controlled ten-case Benchmark v2. It is not a claim of universal patch-verification accuracy.
+> **Important:** 100% is the measured result on the controlled ten-case Benchmark v2 development set. It is not a claim of universal patch-verification accuracy.
+
+---
+
+## Post-freeze validation
+
+Benchmark v2 is oracle-separated, but it was still used during system development. To test generalization more honestly, the verifier was frozen first and then evaluated on a new **12-case Holdout v1** that was authored and hashed after Iteration 5 was frozen.
+
+Public Holdout v1 SHA-256:
+
+```text
+c2604717e69fb99c2d30e17ee4f586d4463e3bd032e55344684e9db9992b5cb1
+```
+
+The holdout audit confirmed that public case material contains no verdict oracle and that the 12 public cases match the 12 evaluator-only oracle entries.
+
+### Holdout v1 results
+
+| System | Completed | Verdict accuracy | FAR | Avg runtime |
+|---|---:|---:|---:|---:|
+| Static LLM baseline | 10 / 12 | **33.3% conservative** | 30.0% | 16.883s |
+| Deterministic probe order, no planner | 12 / 12 | **83.3%** | 20.0% | 2.698s |
+| Frozen Iteration 5 + planner | 12 / 12 | **83.3%** | 20.0% | 9.989s |
+
+The static baseline timed out on two cases (`holdout_006`, `holdout_012`). The headline **33.3%** score is conservative: those provider errors remain in the 12-case denominator. Accuracy over the 10 completed baseline cases was **40.0%**.
+
+Both deterministic probe ordering and Iteration 5 classified **10 of 12 unseen cases correctly**. Both missed `holdout_010` and `holdout_012`, producing `complete_fix` where the evaluator expected `partial_fix`.
+
+This exposes a real generalization gap relative to the development benchmark:
+
+- verdict accuracy: **100.0% → 83.3%**
+- false acceptance rate: **0.0% → 20.0%**
+
+That result is preserved rather than tuned away.
+
+### Agent-prioritization ablation
+
+After Iteration 5 was frozen, a controlled ablation removed the LLM probe planner while keeping the same deterministic contract compiler, probe budget (`2`), execution logic, classification rules, and verdict thresholds.
+
+On Benchmark v2, deterministic ordering reproduced the full **100.0% accuracy / 0.0% FAR** result and all four counterexamples with no model calls. On Holdout v1, deterministic ordering again matched Iteration 5 at **83.3% accuracy / 20.0% FAR**, while running substantially faster.
+
+The supported conclusion is therefore narrower and stronger:
+
+> **Within the tested contract domain, the deterministic contract compiler is the primary source of verification value. Model-based probe prioritization has not shown measurable verdict improvement under the tested two-probe budget.**
+
+The broader product still uses agentic prioritization where ambiguity is real, particularly bounded selection among nearby existing tests in compatible real repositories.
+
+See [`docs/HOLDOUT_V1_PROTOCOL.md`](docs/HOLDOUT_V1_PROTOCOL.md) and [`docs/AGENT_ABLATION.md`](docs/AGENT_ABLATION.md) for the frozen protocol and full interpretation.
 
 ---
 
@@ -162,18 +212,18 @@ public contract
         ↓
 deterministic probe compiler
         ↓
-agent prioritizes valid probes
+bounded ordering / prioritization
         ↓
 deterministic execution
 ```
 
-That structural change produced the first clean **10/10 Benchmark v2** result.
+That structural change produced the first clean **10/10 Benchmark v2** result. The later ablation showed that, for the supported contract vocabulary, the deterministic compiler rather than the planner accounted for that benchmark gain.
 
 <p align="center">
   <img src="assets/refute-engineering-journey.png" alt="refute engineering journey from prompt-heavy experiments to deterministic evidence-backed verification" width="100%">
 </p>
 
-See [`IMPROVEMENT_CHANGELOG.md`](IMPROVEMENT_CHANGELOG.md) for the measured iteration history.
+See [`IMPROVEMENT_CHANGELOG.md`](IMPROVEMENT_CHANGELOG.md) for the measured iteration history, negative experiments, ablation, and post-freeze holdout.
 
 ---
 
@@ -208,6 +258,8 @@ Expected integrity result:
 AUDIT PASSED: public cases are oracle-free and hidden behavior is separated as designed.
 ```
 
+Holdout v1 applies the same public/evaluator separation and additionally records a SHA-256 digest before evaluation.
+
 ---
 
 ## Quick start
@@ -233,7 +285,7 @@ python scripts/audit_benchmark_v2.py
 python -m pytest
 ```
 
-The frozen Iteration 5 measurement point recorded `72 passed in 63.16s`. After dashboard, real-PR, and MCP productization, the project suite was later locally verified as **92 passed in 67.48s**. The later test count does not alter the frozen benchmark metric.
+The frozen Iteration 5 measurement point recorded `72 passed in 63.16s`. After dashboard, real-PR, MCP, holdout, and evaluator hardening, the project suite was locally verified as **93 passed in 68.98s**. The later test count does not alter the frozen benchmark metric.
 
 ### Verify the flagship benchmark case
 
@@ -256,7 +308,16 @@ verdict: partial_fix
 refute eval-advanced benchmark_v2 --oracle-root eval\benchmark_v2 --provider ollama --model qwen3:0.6b --iteration 5 --llm-timeout 30
 ```
 
-For the exact clean-environment procedure and expected per-case verdicts, see [`REPRODUCTION_GUIDE.md`](REPRODUCTION_GUIDE.md).
+### Build and audit the post-freeze holdout
+
+```powershell
+python scripts/build_holdout_v1.py
+python scripts/audit_holdout_v1.py
+```
+
+The documented holdout protocol and expected digest are in [`docs/HOLDOUT_V1_PROTOCOL.md`](docs/HOLDOUT_V1_PROTOCOL.md).
+
+For the exact clean-environment procedure and expected per-case Benchmark v2 verdicts, see [`REPRODUCTION_GUIDE.md`](REPRODUCTION_GUIDE.md).
 
 ### Run the dashboard
 
@@ -320,7 +381,7 @@ Every advanced run persists evidence under:
 artifacts/runs/<run_id>/
 ```
 
-Aggregate benchmark outputs are written to:
+Aggregate Benchmark v2 outputs are written to:
 
 ```text
 artifacts/eval/advanced_iteration_5_benchmark_v2/
@@ -328,6 +389,13 @@ artifacts/eval/advanced_iteration_5_benchmark_v2/
   cases.jsonl
   cases.partial.jsonl
   report.md
+```
+
+Post-freeze validation is documented under:
+
+```text
+docs/HOLDOUT_V1_PROTOCOL.md
+docs/AGENT_ABLATION.md
 ```
 
 Development trajectories are preserved under [`traces/`](traces/). The final Iteration 5 package contains normalized observable actions, metadata, a summary, human instruction/checkpoint material, and the frozen local verification transcript. No hidden chain-of-thought is reconstructed.
@@ -339,6 +407,7 @@ Development trajectories are preserved under [`traces/`](traces/). The final Ite
 ### Supported in the hackathon product
 
 - controlled Python Benchmark v2 cases;
+- post-freeze synthetic Holdout v1 evaluation;
 - public GitHub PR inspection;
 - compatible public Python/pytest PR verification;
 - isolated per-run Python dependency environment for target repositories;
@@ -358,7 +427,8 @@ Development trajectories are preserved under [`traces/`](traces/). The final Ite
 - strong container/VM isolation for untrusted code;
 - authoritative security review;
 - automatic merging or deployment of patches;
-- universal 100% patch-verification accuracy.
+- universal 100% patch-verification accuracy;
+- that the LLM planner improves accuracy within the current deterministic contract-probe domain.
 
 ---
 
@@ -379,12 +449,14 @@ src/refute/
   verify_v5.py             frozen Iteration 5 verifier
 
 frontend/                  React/Vite developer dashboard
-benchmark_v2/              generated oracle-free public benchmark cases
-eval/benchmark_v2/         evaluator-only oracles + hidden checks
-scripts/                   benchmark build + integrity audit
+benchmark_v2/              generated oracle-free development benchmark
+holdout_v1/                generated post-freeze public holdout cases
+eval/benchmark_v2/         evaluator-only Benchmark v2 oracles + hidden checks
+eval/holdout_v1/           evaluator-only Holdout v1 oracles
+scripts/                   benchmark/holdout build + integrity audit tools
 tests/                     unit and regression tests
 traces/                    normalized development trajectories
-docs/MCP_INTEGRATION.md    coding-agent integration guide
+docs/                      MCP, holdout, and ablation documentation
 assets/                    README visual assets
 ```
 
@@ -398,9 +470,11 @@ assets/                    README visual assets
 | [`PRD.md`](PRD.md) | product requirements and original design goals |
 | [`MVP.md`](MVP.md) | supported scope, milestones, and acceptance criteria |
 | [`ARCHITECTURE.md`](ARCHITECTURE.md) | verification architecture and component boundaries |
-| [`IMPROVEMENT_CHANGELOG.md`](IMPROVEMENT_CHANGELOG.md) | measured experiments, regressions, and design decisions |
+| [`IMPROVEMENT_CHANGELOG.md`](IMPROVEMENT_CHANGELOG.md) | measured experiments, regressions, ablations, and design decisions |
 | [`TRAJECTORIES.md`](TRAJECTORIES.md) | human-readable index of coding-agent trajectories |
 | [`REPRODUCTION_GUIDE.md`](REPRODUCTION_GUIDE.md) | frozen benchmark + current product reproduction procedure |
+| [`docs/HOLDOUT_V1_PROTOCOL.md`](docs/HOLDOUT_V1_PROTOCOL.md) | post-freeze holdout protocol, digest, and results |
+| [`docs/AGENT_ABLATION.md`](docs/AGENT_ABLATION.md) | controlled no-planner ablation and interpretation |
 | [`docs/MCP_INTEGRATION.md`](docs/MCP_INTEGRATION.md) | MCP tools, safety contract, and host setup |
 | [`traces/`](traces/) | normalized per-iteration execution/development evidence |
 
@@ -408,9 +482,9 @@ assets/                    README visual assets
 
 ## Design principle
 
-> **The breakthrough was not a better prompt. It was giving the model less responsibility.**
+> **When requirements are mechanically derivable, deterministic evidence should own them completely. Agentic reasoning should be reserved for ambiguity that deterministic machinery cannot represent.**
 
-`refute` uses the language model where semantic prioritization is useful, deterministic code where truth is mechanically observable, and evidence as the boundary between the two.
+The project started with the simpler lesson that the model needed less responsibility. The measured ablation and post-freeze holdout sharpened that further: deterministic tools should own mechanically observable truth, while agents should be used for bounded semantic prioritization where deterministic structure runs out.
 
 ---
 
