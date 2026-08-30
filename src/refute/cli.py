@@ -17,6 +17,7 @@ from .verify_v23 import verify_case_v23
 from .verify_v24 import verify_case_v24
 from .verify_v3 import verify_case_v3
 from .verify_v31 import verify_case_v31
+from .verify_v32 import verify_case_v32
 
 
 def _status(result) -> str:
@@ -49,12 +50,14 @@ def build_parser() -> argparse.ArgumentParser:
     eval_parser.add_argument("--artifacts", type=Path, default=Path("artifacts"))
     eval_parser.add_argument("--oracle-root", type=Path, default=None, help="Evaluator-only oracle directory/file for oracle-separated cases.")
 
-    verify_parser = subparsers.add_parser("verify", help="Run an advanced verification iteration. Defaults to Iteration 3.1.")
+    iterations = ("1", "2", "2.1", "2.2", "2.3", "2.4", "3", "3.1", "3.2")
+
+    verify_parser = subparsers.add_parser("verify", help="Run an advanced verification iteration. Defaults to Iteration 3.2.")
     verify_parser.add_argument("case_dir", type=Path)
     _add_provider_args(verify_parser)
     verify_parser.add_argument("--artifacts", type=Path, default=Path("artifacts"))
     verify_parser.add_argument("--timeout", type=float, default=20.0)
-    verify_parser.add_argument("--iteration", choices=("1", "2", "2.1", "2.2", "2.3", "2.4", "3", "3.1"), default="3.1")
+    verify_parser.add_argument("--iteration", choices=iterations, default="3.2")
     verify_parser.add_argument("--max-reproduction-attempts", type=int, default=3)
     verify_parser.add_argument("--max-challenge-attempts", type=int, default=2)
 
@@ -63,7 +66,7 @@ def build_parser() -> argparse.ArgumentParser:
     _add_provider_args(advanced_parser)
     advanced_parser.add_argument("--artifacts", type=Path, default=Path("artifacts"))
     advanced_parser.add_argument("--timeout", type=float, default=20.0)
-    advanced_parser.add_argument("--iteration", choices=("1", "2", "2.1", "2.2", "2.3", "2.4", "3", "3.1"), default="3.1")
+    advanced_parser.add_argument("--iteration", choices=iterations, default="3.2")
     advanced_parser.add_argument("--max-reproduction-attempts", type=int, default=3)
     advanced_parser.add_argument("--max-challenge-attempts", type=int, default=2)
     advanced_parser.add_argument("--oracle-root", type=Path, default=None, help="Evaluator-only oracle directory/file for oracle-separated cases.")
@@ -133,14 +136,24 @@ def main(argv: list[str] | None = None) -> int:
         try:
             case = load_case(args.case_dir)
             llm = _provider(args)
-            if args.iteration == "1": result = verify_case(case, llm, artifacts_root=args.artifacts, timeout_seconds=args.timeout)
-            elif args.iteration == "2": result = verify_case_v2(case, llm, artifacts_root=args.artifacts, timeout_seconds=args.timeout, max_reproduction_attempts=args.max_reproduction_attempts)
-            elif args.iteration == "2.1": result = verify_case_v21(case, llm, artifacts_root=args.artifacts, timeout_seconds=args.timeout, max_reproduction_attempts=args.max_reproduction_attempts)
-            elif args.iteration == "2.2": result = verify_case_v22(case, llm, artifacts_root=args.artifacts, timeout_seconds=args.timeout, max_reproduction_attempts=args.max_reproduction_attempts)
-            elif args.iteration == "2.3": result = verify_case_v23(case, llm, artifacts_root=args.artifacts, timeout_seconds=args.timeout, max_reproduction_attempts=min(args.max_reproduction_attempts, 2))
-            elif args.iteration == "2.4": result = verify_case_v24(case, llm, artifacts_root=args.artifacts, timeout_seconds=args.timeout, max_reproduction_attempts=min(args.max_reproduction_attempts, 2))
-            elif args.iteration == "3": result = verify_case_v3(case, llm, artifacts_root=args.artifacts, timeout_seconds=args.timeout)
-            else: result = verify_case_v31(case, llm, artifacts_root=args.artifacts, timeout_seconds=args.timeout, max_challenge_attempts=args.max_challenge_attempts)
+            if args.iteration == "1":
+                result = verify_case(case, llm, artifacts_root=args.artifacts, timeout_seconds=args.timeout)
+            elif args.iteration == "2":
+                result = verify_case_v2(case, llm, artifacts_root=args.artifacts, timeout_seconds=args.timeout, max_reproduction_attempts=args.max_reproduction_attempts)
+            elif args.iteration == "2.1":
+                result = verify_case_v21(case, llm, artifacts_root=args.artifacts, timeout_seconds=args.timeout, max_reproduction_attempts=args.max_reproduction_attempts)
+            elif args.iteration == "2.2":
+                result = verify_case_v22(case, llm, artifacts_root=args.artifacts, timeout_seconds=args.timeout, max_reproduction_attempts=args.max_reproduction_attempts)
+            elif args.iteration == "2.3":
+                result = verify_case_v23(case, llm, artifacts_root=args.artifacts, timeout_seconds=args.timeout, max_reproduction_attempts=min(args.max_reproduction_attempts, 2))
+            elif args.iteration == "2.4":
+                result = verify_case_v24(case, llm, artifacts_root=args.artifacts, timeout_seconds=args.timeout, max_reproduction_attempts=min(args.max_reproduction_attempts, 2))
+            elif args.iteration == "3":
+                result = verify_case_v3(case, llm, artifacts_root=args.artifacts, timeout_seconds=args.timeout)
+            elif args.iteration == "3.1":
+                result = verify_case_v31(case, llm, artifacts_root=args.artifacts, timeout_seconds=args.timeout, max_challenge_attempts=args.max_challenge_attempts)
+            else:
+                result = verify_case_v32(case, llm, artifacts_root=args.artifacts, timeout_seconds=args.timeout, max_challenge_attempts=args.max_challenge_attempts)
         except (CaseFormatError, LLMError, ValueError) as exc:
             parser.error(str(exc))
 
@@ -151,24 +164,21 @@ def main(argv: list[str] | None = None) -> int:
             print(f"observed failures: fixed={len(result.test_delta.fixed_tests)} remaining={len(result.test_delta.remaining_failures)} new={len(result.test_delta.new_failures)}")
             print(f"reproduction attempts: {len(result.reproduction_attempts)}")
             print("discriminating reproduction found: " + ("yes" if result.discriminating_reproduction is not None else "no"))
-            if args.iteration == "2.4": print("investigator called: " + ("yes" if result.investigator_called else "no"))
+            if args.iteration == "2.4":
+                print("investigator called: " + ("yes" if result.investigator_called else "no"))
             print("semantic verifier called: " + ("yes" if result.verifier_called else "no"))
-        elif args.iteration in {"3", "3.1"}:
+        elif args.iteration in {"3", "3.1", "3.2"}:
             print(f"test delta: {result.test_delta.classification}")
             print("investigator called: " + ("yes" if result.investigator_called else "no"))
             print("challenger called: " + ("yes" if result.challenger_called else "no"))
             print(f"challenge candidates executed: {len(result.challenge_executions)}")
             print("challenge counterexamples: " + str(sum(item.is_counterexample for item in result.challenge_executions)))
-            if args.iteration == "3.1":
+            if args.iteration in {"3.1", "3.2"}:
                 print(f"challenge generation failures: {len(result.challenge_generation_failures)}")
             if result.challenge_executions:
                 print("challenge outcomes: " + ", ".join(item.classification for item in result.challenge_executions))
             print("semantic verifier called: " + ("yes" if result.verifier_called else "no"))
-        elif args.iteration == "2":
-            print(f"reproduction attempts: {len(result.reproduction_attempts)}")
-        elif args.iteration == "2.1":
-            print(f"reproduction attempts: {len(result.reproduction_attempts)}")
-        elif args.iteration == "2.2":
+        elif args.iteration in {"2", "2.1", "2.2"}:
             print(f"reproduction attempts: {len(result.reproduction_attempts)}")
         print(f"verdict: {result.verdict.value}\nreason: {result.reason}\nevidence: {result.run_root}")
         return 0
@@ -185,8 +195,11 @@ def main(argv: list[str] | None = None) -> int:
         print(f"verdict accuracy: {summary['verdict_accuracy']:.1%}\nfalse acceptance rate: {summary['false_acceptance_rate']:.1%}")
         if "challenger_case_yield" in summary:
             print(f"challenger case yield: {summary['challenger_case_yield']:.1%}\nchallenge counterexamples: {summary['challenge_counterexamples']}")
+            if "challenge_generation_failures" in summary:
+                print(f"challenge generation failures: {summary['challenge_generation_failures']}")
         print(f"average runtime: {summary['average_runtime_seconds']:.3f}s")
-        if not summary["evaluation_complete"]: print("warning: evaluation contains provider/validation errors; inspect the report before comparing metrics")
+        if not summary["evaluation_complete"]:
+            print("warning: evaluation contains provider/validation errors; inspect the report before comparing metrics")
         name = f"advanced_iteration_{_iteration_slug(args.iteration)}" + ("_benchmark_v2" if oracle_separated else "")
         root = args.artifacts.resolve() / "eval" / name
         print(f"aggregate evidence:\n  {root / 'summary.json'}\n  {root / 'cases.jsonl'}\n  {root / 'report.md'}\n  {root / 'cases.partial.jsonl'}")
