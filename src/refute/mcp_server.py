@@ -2,6 +2,9 @@ from __future__ import annotations
 
 import json
 import re
+import threading
+import time
+import uuid
 from pathlib import Path
 
 from mcp.server import MCPServer
@@ -17,6 +20,9 @@ ARTIFACTS_ROOT = REPO_ROOT / "artifacts"
 GITHUB_WORKSPACE_ROOT = ARTIFACTS_ROOT / "github-workspaces"
 
 mcp = MCPServer("refute")
+
+_JOB_LOCK = threading.Lock()
+_JOBS: dict[str, dict[str, object]] = {}
 
 
 def _execution_payload(result) -> dict[str, object]:
@@ -103,44 +109,42 @@ def _nearby_payload(result) -> dict[str, object]:
     }
 
 
-@mcp.tool()
-def inspect_pr(url: str) -> dict[str, object]:
-    """Inspect a public GitHub pull request without executing repository code.
-
-    Returns public PR metadata, base/head revisions, change counts, linked issue
-    information when available, and the public issue/PR contract used by refute.
-    """
-    metadata = fetch_github_pr_metadata(url)
-    return _metadata_payload(metadata)
+def _set_job(job_id: str, **updates: object) -> None:
+    with _JOB_LOCK:
+        job = _JOBS[job_id]
+        job.update(updates)
+        job["updated_at"] = time.time()
 
 
-@mcp.tool()
-def verify_pr(
+def _snapshot_job(job_id: str) -> dict[str, object]:
+    with _JOB_LOCK:
+        job = _JOBS.get(job_id)
+        if job is None:
+            raise ValueError(f"unknown verification job: {job_id}")
+        return dict(job)
+
+
+def _verify_pr_sync(
     url: str,
-    confirm_execution: bool = False,
-    provider: str = "ollama",
-    model: str = "qwen3:0.6b",
-    llm_timeout: float = 30.0,
-    execution_timeout: float = 30.0,
+    *,
+    provider: str,
+    model: str,
+    llm_timeout: float,
+    execution_timeout: float,
+    progress=None,
 ) -> dict[str, object]:
-    """Verify a public Python/pytest GitHub PR and return structured evidence.
+    def step(stage: str, detail: str) -> None:
+        if progress is not None:
+            progress(stage, detail)
 
-    This tool clones the target revisions, creates an isolated environment,
-    installs the repository's declared Python/test dependencies, and executes
-    third-party tests locally. Set confirm_execution=true only after the human
-    has explicitly approved that local execution.
-    """
-    if confirm_execution is not True:
-        raise ValueError(
-            "explicit local execution approval is required; call inspect_pr first, "
-            "tell the user that dependencies/tests will run locally, then retry with confirm_execution=true"
-        )
-    if llm_timeout <= 0 or execution_timeout <= 0:
-        raise ValueError("timeouts must be greater than zero")
-
+    step("fetching_pr", "Reading public GitHub pull request metadata")
     metadata = fetch_github_pr_metadata(url)
+
+    step("preparing_workspace", "Cloning revisions and provisioning an isolated target environment")
     case = prepare_github_pr_case(metadata, GITHUB_WORKSPACE_ROOT)
     llm = provider_from_env(provider, model, timeout_seconds=llm_timeout)
+
+    step("reproducing_trigger", "Executing the same reproduction against base and patch")
     result = verify_case_v5(
         case,
         llm,
@@ -160,6 +164,7 @@ def verify_pr(
     payload = _verification_payload(result, case, source=source)
 
     if result.test_delta.classification == "suite_repaired" and result.verdict.value == "inconclusive":
+        step("challenging_patch", "Selecting and executing bounded nearby tests")
         nearby = run_nearby_adversary(
             case,
             llm,
@@ -190,11 +195,120 @@ def verify_pr(
                 "completeness evidence was available, so the verdict remains inconclusive."
             )
 
+    step("recording_evidence", "Writing the structured MCP result to the evidence directory")
     (result.run_root / "mcp_result.json").write_text(
         json.dumps(payload, indent=2) + "\n",
         encoding="utf-8",
     )
     return payload
+
+
+def _job_worker(
+    job_id: str,
+    url: str,
+    provider: str,
+    model: str,
+    llm_timeout: float,
+    execution_timeout: float,
+) -> None:
+    def progress(stage: str, detail: str) -> None:
+        _set_job(job_id, status="running", stage=stage, detail=detail)
+
+    try:
+        payload = _verify_pr_sync(
+            url,
+            provider=provider,
+            model=model,
+            llm_timeout=llm_timeout,
+            execution_timeout=execution_timeout,
+            progress=progress,
+        )
+        _set_job(
+            job_id,
+            status="complete",
+            stage="complete",
+            detail="Verification complete",
+            result=payload,
+            run_id=payload.get("run_id"),
+        )
+    except Exception as exc:  # surfaced through polling tool rather than killing the stdio session
+        _set_job(
+            job_id,
+            status="failed",
+            stage="failed",
+            detail=str(exc),
+            error=str(exc),
+        )
+
+
+@mcp.tool()
+def inspect_pr(url: str) -> dict[str, object]:
+    """Inspect a public GitHub pull request without executing repository code."""
+    metadata = fetch_github_pr_metadata(url)
+    return _metadata_payload(metadata)
+
+
+@mcp.tool()
+def verify_pr(
+    url: str,
+    confirm_execution: bool = False,
+    provider: str = "ollama",
+    model: str = "qwen3:0.6b",
+    llm_timeout: float = 30.0,
+    execution_timeout: float = 30.0,
+) -> dict[str, object]:
+    """Start verification of a public Python/pytest GitHub PR.
+
+    Verification can take minutes, so this tool returns immediately with a
+    job_id. Poll get_verify_job(job_id) until status is complete or failed.
+    This operation installs declared dependencies and executes third-party
+    tests locally, so confirm_execution=true is required after human approval.
+    """
+    if confirm_execution is not True:
+        raise ValueError(
+            "explicit local execution approval is required; call inspect_pr first, "
+            "tell the user that dependencies/tests will run locally, then retry with confirm_execution=true"
+        )
+    if llm_timeout <= 0 or execution_timeout <= 0:
+        raise ValueError("timeouts must be greater than zero")
+
+    job_id = f"verify-{uuid.uuid4().hex[:12]}"
+    now = time.time()
+    with _JOB_LOCK:
+        _JOBS[job_id] = {
+            "job_id": job_id,
+            "status": "queued",
+            "stage": "queued",
+            "detail": "Verification job accepted",
+            "url": url,
+            "created_at": now,
+            "updated_at": now,
+            "result": None,
+            "error": None,
+            "run_id": None,
+        }
+
+    thread = threading.Thread(
+        target=_job_worker,
+        args=(job_id, url, provider, model, llm_timeout, execution_timeout),
+        name=f"refute-{job_id}",
+        daemon=True,
+    )
+    thread.start()
+    return {
+        "job_id": job_id,
+        "status": "queued",
+        "stage": "queued",
+        "message": "Verification started. Poll get_verify_job with this job_id until complete.",
+    }
+
+
+@mcp.tool()
+def get_verify_job(job_id: str) -> dict[str, object]:
+    """Poll an asynchronous verify_pr job without starting new execution."""
+    if not re.fullmatch(r"verify-[A-Za-z0-9]+", job_id):
+        raise ValueError("invalid verification job id")
+    return _snapshot_job(job_id)
 
 
 @mcp.tool()
