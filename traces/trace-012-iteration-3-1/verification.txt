@@ -1,0 +1,32 @@
+Verification status: PENDING LOCAL RUN
+
+Required checks:
+1. git pull
+2. python -m pytest
+3. python scripts/build_benchmark_v2.py
+4. targeted Iteration 3.1 runs on case_001, case_002, case_003, case_006, and case_007
+5. full Benchmark v2 Iteration 3.1 evaluation
+
+Commands:
+`refute verify benchmark_v2\case_001 --provider ollama --model qwen3:0.6b --iteration 3.1 --llm-timeout 30`
+`refute verify benchmark_v2\case_002 --provider ollama --model qwen3:0.6b --iteration 3.1 --llm-timeout 30`
+`refute verify benchmark_v2\case_003 --provider ollama --model qwen3:0.6b --iteration 3.1 --llm-timeout 30`
+`refute verify benchmark_v2\case_006 --provider ollama --model qwen3:0.6b --iteration 3.1 --llm-timeout 30`
+`refute verify benchmark_v2\case_007 --provider ollama --model qwen3:0.6b --iteration 3.1 --llm-timeout 30`
+`refute eval-advanced benchmark_v2 --oracle-root eval\benchmark_v2 --provider ollama --model qwen3:0.6b --iteration 3.1 --llm-timeout 30`
+
+Expected qualitative signals:
+- generated challenge must carry an exact issue-report grounding quote;
+- one candidate is generated per call;
+- invalid or non-grounded output may be retried once;
+- true complete fixes should be less vulnerable to arbitrary fail/fail tests;
+- case_002 should remain discoverable as a grounded remaining requirement;
+- case_003 and case_007 should ideally surface original-PASS/patch-FAIL regression evidence;
+- hidden tests and oracle remain evaluator-only.
+
+Frozen comparison:
+- Baseline v2: 10.0% accuracy / 57.1% FAR / 2.527s
+- Iteration 2.4 v2: 60.0% accuracy / 57.1% FAR / 0.929s
+- Iteration 3 v2: 40.0% accuracy / 0.0% FAR / 14.774s / 42.9% challenger yield
+
+Do not claim Iteration 3.1 improvement until the local run is supplied.
