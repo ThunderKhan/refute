@@ -172,22 +172,25 @@ def _is_pytest_file(path: str) -> bool:
     )
 
 
-def _changed_test_files(source: Path, base_sha: str, head_sha: str) -> tuple[str, ...]:
+def _changed_files(source: Path, base_sha: str, head_sha: str) -> tuple[str, ...]:
     output = _git_output(["diff", "--name-only", "--diff-filter=ACMR", base_sha, head_sha, "--"], cwd=source)
-    return tuple(line.strip() for line in output.splitlines() if line.strip() and _is_pytest_file(line.strip()))
+    return tuple(line.strip() for line in output.splitlines() if line.strip())
+
+
+def _changed_test_files(source: Path, base_sha: str, head_sha: str) -> tuple[str, ...]:
+    return tuple(path for path in _changed_files(source, base_sha, head_sha) if _is_pytest_file(path))
 
 
 def _added_test_names(source: Path, base_sha: str, head_sha: str, test_files: tuple[str, ...]) -> tuple[str, ...]:
-    if not test_files:
-        return ()
-    diff = _git_output(["diff", "--unified=0", base_sha, head_sha, "--", *test_files], cwd=source)
     names: list[str] = []
-    for line in diff.splitlines():
-        if not line.startswith("+") or line.startswith("+++"):
-            continue
-        match = re.match(r"\+\s*(?:async\s+)?def\s+(test_[A-Za-z0-9_]+)\s*\(", line)
-        if match and match.group(1) not in names:
-            names.append(match.group(1))
+    for relative in test_files:
+        patch = _git_output(["diff", "--unified=0", base_sha, head_sha, "--", relative], cwd=source)
+        for raw in patch.splitlines():
+            if not raw.startswith("+") or raw.startswith("+++"):
+                continue
+            match = re.match(r"\+\s*(?:async\s+)?def\s+(test_[A-Za-z0-9_]+)\s*\(", raw)
+            if match and match.group(1) not in names:
+                names.append(match.group(1))
     return tuple(names)
 
 
@@ -334,12 +337,14 @@ def prepare_github_pr_case(metadata: GitHubPRMetadata, workspace_root: str | Pat
             "refute real-repo mode currently supports public Python repositories with a detectable pytest test surface"
         )
 
-    changed_tests = _changed_test_files(source, metadata.base_sha, metadata.head_sha)
+    changed_files = _changed_files(source, metadata.base_sha, metadata.head_sha)
+    changed_tests = tuple(path for path in changed_files if _is_pytest_file(path))
     added_tests = _added_test_names(source, metadata.base_sha, metadata.head_sha, changed_tests)
     diff = _git_output(["diff", "--no-ext-diff", "--unified=3", metadata.base_sha, metadata.head_sha, "--"], cwd=source)
     (run_root / "github_context.json").write_text(
         json.dumps(
             {
+                "changed_files": list(changed_files),
                 "changed_tests": list(changed_tests),
                 "added_test_names": list(added_tests),
                 "diff": diff[:50000],
