@@ -110,6 +110,12 @@ export default function LiveVerifyPage() {
     result && !result.planner_called && result.challenge_generation_failures.some((item) => item.includes("no deterministic probes compiled")),
   );
 
+  const nearbyRows = result?.nearby_adversary?.executions.map((item) => ({
+    title: `${item.candidate_id} · Nearby existing test`,
+    detail: `${item.nodeid} · ${item.classification.replaceAll("_", " ")} · original ${statusText(item.original.passed, item.original.timed_out, item.original.exit_code)} · patch ${statusText(item.patched.passed, item.patched.timed_out, item.patched.exit_code)}`,
+    state: item.classification === "regression_counterexample" || item.classification === "invalid_execution" ? "warn" : "done",
+  })) ?? [];
+
   const timeline = result
     ? [
         {
@@ -123,13 +129,13 @@ export default function LiveVerifyPage() {
           state: "done",
         },
         {
-          title: "Agent planner",
+          title: "Contract probe planner",
           detail: result.planner_called
             ? result.planner_fallback
               ? "Planner failed; deterministic fallback recorded"
-              : "Probe prioritization completed without fallback"
+              : "Contract-derived probe prioritization completed without fallback"
             : noCompiledProbes
-              ? "No deterministic probes compiled for this public contract"
+              ? "No deterministic contract probes compiled; trying bounded nearby-test adversary"
               : "Planner not needed for this evidence shape",
           state: result.planner_fallback || noCompiledProbes ? "warn" : "done",
         },
@@ -138,6 +144,14 @@ export default function LiveVerifyPage() {
           detail: `${probe.classification.replaceAll("_", " ")} · original ${statusText(probe.original.passed, probe.original.timed_out, probe.original.exit_code)} · patch ${statusText(probe.patched.passed, probe.patched.timed_out, probe.patched.exit_code)}`,
           state: probe.classification.includes("counterexample") ? "warn" : "done",
         })),
+        ...(result.nearby_adversary ? [{
+          title: "Nearby-test adversary",
+          detail: result.nearby_adversary.collection_error
+            ? result.nearby_adversary.collection_error
+            : `${result.nearby_adversary.candidate_count} existing candidates · selected ${result.nearby_adversary.selected_ids.join(", ") || "none"}${result.nearby_adversary.used_fallback ? " · deterministic fallback" : " · agent prioritized"}`,
+          state: result.nearby_adversary.collection_error ? "warn" : "done",
+        }] : []),
+        ...nearbyRows,
       ]
     : [];
 
@@ -175,7 +189,7 @@ export default function LiveVerifyPage() {
               <div className="eyebrow"><CircleDot size={14} /> Real patch verification</div>
               <h1>Paste the PR.<br />Get the verdict.</h1>
             </div>
-            <p>refute checks a public Python/pytest pull request locally, compares base and patched revisions, challenges repaired behavior with contract-derived probes, and returns an evidence-backed verdict.</p>
+            <p>refute checks a public Python/pytest pull request locally, compares base and patched revisions, challenges repaired behavior with deterministic probes and bounded nearby tests, and returns an evidence-backed verdict.</p>
           </div>
         </section>
 
@@ -223,7 +237,7 @@ export default function LiveVerifyPage() {
                   <button className="pill-button orange full" onClick={runVerification} disabled={running || !githubMeta || !confirmed}>
                     {running ? <><Sparkles size={15} /> Provisioning & verifying…</> : <><Play size={15} fill="currentColor" /> Verify patch</>}
                   </button>
-                  <p className="microcopy">When a PR changes pytest files, refute uses those patch-authored tests as a deterministic reproduction against both base and patch. Otherwise it falls back to the full suite.</p>
+                  <p className="microcopy">Patch-authored tests establish the reported trigger. When contract probes are unavailable, the agent may prioritize a bounded set of existing nearby tests; refute still executes them deterministically.</p>
                 </>
               ) : (
                 <>
@@ -268,7 +282,7 @@ export default function LiveVerifyPage() {
                 </div>
                 <div className="timeline">
                   {!result && !running && <div className="timeline-loading"><span /> ready to collect evidence</div>}
-                  {running && <div className="timeline-loading"><span /> cloning revisions, provisioning an isolated environment, locating changed tests, reproducing the reported behavior, planning probes, and collecting evidence…</div>}
+                  {running && <div className="timeline-loading"><span /> cloning revisions, provisioning an isolated environment, reproducing the trigger, compiling probes, selecting nearby tests when needed, and collecting evidence…</div>}
                   {timeline.map((item, index) => (
                     <div className="timeline-row" key={`${item.title}-${index}`}>
                       <div className={`timeline-icon ${item.state}`}>{item.state === "done" ? <Check size={14} /> : <X size={14} />}</div>
@@ -285,7 +299,7 @@ export default function LiveVerifyPage() {
                   <p>{result.reason}</p>
                   <div className="verdict-meta">
                     <span><TestTube2 size={15} /> {result.challenge_counterexamples} counterexample{result.challenge_counterexamples === 1 ? "" : "s"}</span>
-                    <span><ShieldCheck size={15} /> {result.planner_fallback ? "fallback recorded" : "evidence-backed"}</span>
+                    <span><ShieldCheck size={15} /> {result.planner_fallback || result.nearby_adversary?.used_fallback ? "fallback recorded" : "evidence-backed"}</span>
                     <span className="evidence-path-live">{result.evidence_path}</span>
                   </div>
                 </div>
