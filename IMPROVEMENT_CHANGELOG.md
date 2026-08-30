@@ -72,26 +72,49 @@ Benchmark v2 result:
 Interpretation:
 - Iteration 3 achieved the safety goal: false acceptance fell from 57.1% to 0.0%;
 - however, accuracy fell from 60.0% to 40.0% and latency rose sharply;
-- true complete fixes (`case_001`, `case_005`, `case_009`) were vulnerable to poorly grounded fail/fail challenge tests, creating false negative/partial verdicts;
-- several suite-repaired cases produced no usable challenge candidate or timed close to the provider limit;
-- a fail/fail generated test is not automatically trustworthy evidence of a remaining requirement merely because it executes cleanly.
+- true complete fixes were vulnerable to poorly grounded fail/fail challenge tests;
+- several suite-repaired cases produced no usable challenge candidate or timed close to the provider limit.
 
-Decision: preserve Iteration 3 as a measured safety-positive / accuracy-negative experiment. Do not discard the Challenger; strengthen candidate grounding and generation reliability before another benchmark run.
+Decision: preserve Iteration 3 as a measured safety-positive / accuracy-negative experiment.
 
-## Advanced Iteration 3.1 — grounded single-candidate Challenger
+## Advanced Iteration 3.1 — exact-quote grounded Challenger
 
-Hypothesis: requiring each challenge to cite an exact issue-report phrase, generating one focused candidate at a time, and using bounded retry will reduce fabricated counterexamples while retaining the FAR improvement from Iteration 3.
+Hypothesis: requiring an exact issue quote and one candidate per call will reduce fabricated counterexamples while retaining safety.
+
+Local verification:
+- `python -m pytest`: **56 passed in 43.99s**;
+- all five targeted suite-repaired cases invoked Challenger;
+- case_001, case_003, case_006, and case_007 produced **two generation failures and zero executable candidates**;
+- case_002 produced one executable candidate, but it was `invalid_execution` after one generation failure.
+
+Benchmark v2 result:
+- completed cases: **10/10**
+- errors: **0**
+- accuracy: **30.0%**
+- FAR: **0.0%**
+- Challenger case yield: **0.0%**
+- executable counterexamples: **0**
+- average runtime: **20.438s/case**
+
+Interpretation:
+- the grounding gate was too brittle for `qwen3:0.6b`; asking the model to reproduce a free-form exact quote caused generation rejection on nearly every suite-repaired case;
+- the system stayed safe by returning `inconclusive`, but capability collapsed and runtime increased because it paid for repeated failed structured generations;
+- exact grounding is valuable, but the model should select from deterministic issue spans rather than reproduce the span text itself.
+
+Decision: preserve 3.1 as a negative experiment demonstrating that stricter grounding can reduce fabrication while simultaneously destroying generation reliability if the grounding interface is model-hostile.
+
+## Advanced Iteration 3.2 — deterministic contract IDs
+
+Hypothesis: extract issue-contract spans deterministically, assign stable IDs (`c1`, `c2`, ...), and ask the Challenger to select a contract ID rather than copy an exact quote. This should keep grounding auditable while reducing structured-output failure and latency.
 
 Changes:
-- Challenger returns exactly one candidate per call rather than a 1–3 test bundle;
-- every candidate declares `remaining_requirement` or `regression_guard`;
-- every candidate must include a `grounding_quote` copied from the issue report;
-- a deterministic quote gate rejects invented/non-issue grounding before execution;
-- pytest exit codes other than 0/1 and timeouts remain invalid evidence;
-- original PASS + patch FAIL remains high-confidence regression evidence;
-- original FAIL + patch FAIL counts as partial-fix evidence only for an explicitly grounded `remaining_requirement` candidate;
-- non-decisive/survived/invalid attempts can feed one bounded retry;
-- if all valid grounded attempts survive, bounded evidence may support `complete_fix`; unusable evidence remains `inconclusive`;
-- oracle and hidden tests remain unavailable to the agentic path.
+- deterministic issue text is split into numbered contract spans before the model call;
+- Challenger returns `contract_id`, `kind`, `rationale`, and one pytest test;
+- the grounding gate validates the selected ID mechanically; no free-form quote matching is required;
+- the Challenger prompt directly includes the allowed contract IDs and corresponding issue text;
+- Iteration 3.2 removes the separate Investigator call from the suite-repaired challenge path, reducing both latency and provider failure surface;
+- one candidate is generated per call with at most two attempts;
+- execution semantics remain conservative: original PASS + patch FAIL => regression evidence; original FAIL + patch FAIL counts only for a `remaining_requirement`; invalid pytest execution is not evidence;
+- oracle and hidden tests remain unavailable to the verification path.
 
-Target: recover accuracy above Iteration 3 while retaining materially lower FAR than Iteration 2.4. Status: implementation complete; local verification pending.
+Target: materially reduce 3.1 generation failures while recovering useful counterexamples and keeping FAR below Iteration 2.4's 57.1%. Status: implementation complete; local verification pending.
