@@ -1,0 +1,28 @@
+.issue-copy-live {
+  white-space: pre-line;
+}
+
+.live-error-card {
+  background: #202020;
+}
+
+.evidence-path-live {
+  grid-column: 1 / -1;
+  width: 100%;
+  overflow-wrap: anywhere;
+  font-family: var(--mono);
+  font-size: 10px;
+  color: rgba(252, 252, 252, 0.58);
+}
+
+.control-card select:disabled,
+.control-card button:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+@media (max-width: 767px) {
+  .evidence-path-live {
+    font-size: 9px;
+  }
+}
