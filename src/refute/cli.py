@@ -19,6 +19,7 @@ from .verify_v3 import verify_case_v3
 from .verify_v31 import verify_case_v31
 from .verify_v32 import verify_case_v32
 from .verify_v33 import verify_case_v33
+from .verify_v4 import verify_case_v4
 
 
 def _status(result) -> str:
@@ -51,14 +52,14 @@ def build_parser() -> argparse.ArgumentParser:
     eval_parser.add_argument("--artifacts", type=Path, default=Path("artifacts"))
     eval_parser.add_argument("--oracle-root", type=Path, default=None, help="Evaluator-only oracle directory/file for oracle-separated cases.")
 
-    iterations = ("1", "2", "2.1", "2.2", "2.3", "2.4", "3", "3.1", "3.2", "3.3")
+    iterations = ("1", "2", "2.1", "2.2", "2.3", "2.4", "3", "3.1", "3.2", "3.3", "4")
 
-    verify_parser = subparsers.add_parser("verify", help="Run an advanced verification iteration. Defaults to Iteration 3.3.")
+    verify_parser = subparsers.add_parser("verify", help="Run an advanced verification iteration. Defaults to Iteration 4.")
     verify_parser.add_argument("case_dir", type=Path)
     _add_provider_args(verify_parser)
     verify_parser.add_argument("--artifacts", type=Path, default=Path("artifacts"))
     verify_parser.add_argument("--timeout", type=float, default=20.0)
-    verify_parser.add_argument("--iteration", choices=iterations, default="3.3")
+    verify_parser.add_argument("--iteration", choices=iterations, default="4")
     verify_parser.add_argument("--max-reproduction-attempts", type=int, default=3)
     verify_parser.add_argument("--max-challenge-attempts", type=int, default=2)
 
@@ -67,7 +68,7 @@ def build_parser() -> argparse.ArgumentParser:
     _add_provider_args(advanced_parser)
     advanced_parser.add_argument("--artifacts", type=Path, default=Path("artifacts"))
     advanced_parser.add_argument("--timeout", type=float, default=20.0)
-    advanced_parser.add_argument("--iteration", choices=iterations, default="3.3")
+    advanced_parser.add_argument("--iteration", choices=iterations, default="4")
     advanced_parser.add_argument("--max-reproduction-attempts", type=int, default=3)
     advanced_parser.add_argument("--max-challenge-attempts", type=int, default=2)
     advanced_parser.add_argument("--oracle-root", type=Path, default=None, help="Evaluator-only oracle directory/file for oracle-separated cases.")
@@ -155,8 +156,10 @@ def main(argv: list[str] | None = None) -> int:
                 result = verify_case_v31(case, llm, artifacts_root=args.artifacts, timeout_seconds=args.timeout, max_challenge_attempts=args.max_challenge_attempts)
             elif args.iteration == "3.2":
                 result = verify_case_v32(case, llm, artifacts_root=args.artifacts, timeout_seconds=args.timeout, max_challenge_attempts=args.max_challenge_attempts)
-            else:
+            elif args.iteration == "3.3":
                 result = verify_case_v33(case, llm, artifacts_root=args.artifacts, timeout_seconds=args.timeout, max_challenge_attempts=args.max_challenge_attempts)
+            else:
+                result = verify_case_v4(case, llm, artifacts_root=args.artifacts, timeout_seconds=args.timeout, max_challenge_attempts=args.max_challenge_attempts)
         except (CaseFormatError, LLMError, ValueError) as exc:
             parser.error(str(exc))
 
@@ -170,17 +173,19 @@ def main(argv: list[str] | None = None) -> int:
             if args.iteration == "2.4":
                 print("investigator called: " + ("yes" if result.investigator_called else "no"))
             print("semantic verifier called: " + ("yes" if result.verifier_called else "no"))
-        elif args.iteration in {"3", "3.1", "3.2", "3.3"}:
+        elif args.iteration in {"3", "3.1", "3.2", "3.3", "4"}:
             print(f"test delta: {result.test_delta.classification}")
             print("investigator called: " + ("yes" if result.investigator_called else "no"))
             print("challenger called: " + ("yes" if result.challenger_called else "no"))
             print(f"challenge candidates executed: {len(result.challenge_executions)}")
             print("challenge counterexamples: " + str(sum(item.is_counterexample for item in result.challenge_executions)))
-            if args.iteration in {"3.1", "3.2", "3.3"}:
+            if args.iteration in {"3.1", "3.2", "3.3", "4"}:
                 print(f"challenge generation failures: {len(result.challenge_generation_failures)}")
-            if args.iteration == "3.3":
+            if args.iteration in {"3.3", "4"}:
                 print("challenge critic called: " + ("yes" if result.critic_called else "no"))
                 print(f"challenge critic failures: {len(result.critic_failures)}")
+            if args.iteration == "4":
+                print(f"challenge critic rejections: {len(result.critic_rejections)}")
             if result.challenge_executions:
                 print("challenge outcomes: " + ", ".join(item.classification for item in result.challenge_executions))
             print("semantic verifier called: " + ("yes" if result.verifier_called else "no"))
@@ -205,6 +210,8 @@ def main(argv: list[str] | None = None) -> int:
                 print(f"challenge generation failures: {summary['challenge_generation_failures']}")
             if "critic_failures" in summary:
                 print(f"challenge critic failures: {summary['critic_failures']}")
+            if "critic_rejections" in summary:
+                print(f"challenge critic rejections: {summary['critic_rejections']}")
         print(f"average runtime: {summary['average_runtime_seconds']:.3f}s")
         if not summary["evaluation_complete"]:
             print("warning: evaluation contains provider/validation errors; inspect the report before comparing metrics")
