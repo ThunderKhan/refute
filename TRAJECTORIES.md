@@ -100,7 +100,7 @@ Normalized trace: `traces/trace-011-iteration-3/`.
 
 ## trajectory-012 — Advanced Iteration 3.1: exact-quote grounding
 
-Iteration 3.1 required one typed candidate and an exact issue quote. Local measurement fell to **30.0% accuracy, 0.0% FAR, 0.0% yield, and 20.438s/case**. The interface was too brittle for the small local model: most suite-repaired cases exhausted generation attempts without executable evidence.
+Iteration 3.1 required one typed candidate and an exact issue quote. Local measurement fell to **30.0% accuracy, 0.0% FAR, 0.0% yield, and 20.438s/case**. The interface was too brittle for the small local model.
 
 Normalized trace: `traces/trace-012-iteration-3-1/`.
 
@@ -108,9 +108,9 @@ Normalized trace: `traces/trace-012-iteration-3-1/`.
 
 ## trajectory-013 — Advanced Iteration 3.2: deterministic contract IDs
 
-Exact quote copying was replaced with deterministic issue-contract spans and model-selected IDs; the Investigator call was removed from the challenge path. The human verified **60 tests passed in 47.71s**. Benchmark v2 still measured **30.0% accuracy, 0.0% FAR, 0.0% yield, 0 counterexamples, 9 generation failures, and 25.966s/case**.
+Exact quote copying was replaced with deterministic issue-contract spans and model-selected IDs; the Investigator call was removed from the challenge path. Benchmark v2 still measured **30.0% accuracy, 0.0% FAR, 0.0% yield, 0 counterexamples, 9 generation failures, and 25.966s/case**.
 
-The main failure shifted from quote-format brittleness to evidence semantics: generated tests often executed but could not safely be treated as remaining requirements. This showed that grounding reference and evidence qualification are distinct problems.
+The failure shifted from quote-format brittleness to evidence semantics: generated tests could execute while still failing to justify a verdict.
 
 Normalized trace: `traces/trace-013-iteration-3-2/`.
 
@@ -118,11 +118,9 @@ Normalized trace: `traces/trace-013-iteration-3-2/`.
 
 ## trajectory-014 — Advanced Iteration 3.3: contract-entailment critic
 
-Iteration 3.3 separated proposal from evidence qualification. Patch-failing generated tests were passed to a strict Critic which saw only the selected public contract span and the generated test.
+A separate Critic was introduced to qualify patch-failing generated assertions against the selected public contract. Benchmark v2 measured **30.0% accuracy, 0.0% FAR, 0.0% yield, 0 counterexamples, 7 generation failures, 0 critic failures, and 27.624s/case**.
 
-The human verified **63 tests passed in 55.76s**. Benchmark v2 measured **30.0% accuracy, 0.0% FAR, 0.0% Challenger case yield, 0 counterexamples, 7 generation failures, 0 critic failures, and 27.624s/case**. The Critic was reliable but rejected every patch-failing generated assertion it saw.
-
-This ended the 3.x prompt-tuning line. Independent criticism could keep the system safe, but it could not rescue free-form generated pytest that mixed semantic intent, API selection, expected behavior, and executable syntax in one model output.
+The Critic was reliable but could not rescue low-quality free-form generated tests. This ended the 3.x prompt-tuning line.
 
 Normalized trace: `traces/trace-014-iteration-3-3/`.
 
@@ -130,15 +128,27 @@ Normalized trace: `traces/trace-014-iteration-3-3/`.
 
 ## trajectory-015 — Advanced Iteration 4: intent-first Challenger
 
-The architecture was changed rather than adding another prompt variant. Challenger no longer writes Python. It emits a typed semantic intent: contract ID, public target, JSON arguments, expectation type, and rationale. Public callable targets are extracted deterministically from the public test import surface.
+Iteration 4 removed Python test authoring from the model. Challenger emitted a typed semantic intent, a Critic validated it, and deterministic Python compiled it into pytest.
 
-A separate intent Critic validates whether the compact input/expectation is entailed by the selected public contract before execution. Only supported intents are compiled into pytest by deterministic Python and executed on original and patch. This removes model-authored imports, arbitrary helper logic, and malformed pytest syntax from the challenge path.
+The human verified **67 tests passed in 58.29s**. Benchmark v2 measured **30.0% accuracy, 0.0% FAR, 14.3% Challenger yield, 1 counterexample, 9 generation failures, 1 critic rejection, and 13.026s/case**.
 
-Negative verdicts still require critic-approved executable counterexamples. `complete_fix` requires two distinct critic-approved survived intents. Oracle and hidden tests remain unavailable to Challenger, Critic, compiler, and verification policy.
-
-Local verification is pending; no Iteration 4 improvement claim is made yet.
+This roughly halved runtime versus 3.3, but the model still had to invent semantic assertions. The measured failure made the next architectural move clear: remove semantic assertion invention from the model too.
 
 Normalized trace: `traces/trace-015-iteration-4/`.
+
+---
+
+## trajectory-016 — Advanced Iteration 5: deterministic contract probes
+
+Iteration 5 moved semantic probe construction into a deterministic public-contract compiler. The model no longer authors code, inputs, expectations, or exceptions; it only prioritizes IDs from a bounded set of contract-derived probes. If planning fails, a deterministic order is available as an explicitly recorded fallback.
+
+The human verified **72 tests passed in 63.16s**. The clean oracle-separated Benchmark v2 run completed all ten cases with **100.0% verdict accuracy, 0.0% FAR, 57.1% Challenger case yield, 4 executable counterexamples, 0 generation failures, 0 planner fallbacks, and 5.077s/case**.
+
+The four previously hidden nearby-failure classes were recovered from public contracts: upper-boundary completeness, internal-space preservation, tiny truncation limits, and exception specificity. Complete fixes required two independent survived probes. The verification path never loaded evaluator oracles or hidden tests.
+
+This result is frozen as the final advanced system for the hackathon. The central engineering lesson is that the improvement came from **narrowing the model's role**, not from making the prompt more elaborate: agents prioritize and reason where ambiguity remains; deterministic machinery derives and executes mechanically checkable evidence.
+
+Normalized trace: `traces/trace-016-iteration-5/`.
 
 ---
 
