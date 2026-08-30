@@ -118,13 +118,27 @@ Normalized trace: `traces/trace-013-iteration-3-2/`.
 
 ## trajectory-014 — Advanced Iteration 3.3: contract-entailment critic
 
-Iteration 3.3 retains deterministic contract IDs but separates proposal from evidence qualification. A Challenger still proposes nearby tests, but any generated test that fails on the patch must pass a second strict Critic which sees only the selected public contract span and the test code. Unsupported executable failures are rejected and can feed a bounded retry instead of directly affecting the verdict.
+Iteration 3.3 separated proposal from evidence qualification. Patch-failing generated tests were passed to a strict Critic which saw only the selected public contract span and the generated test.
 
-Regression and remaining-requirement evidence therefore require both deterministic execution shape and independent contract support. Patch-passing challenges avoid the extra Critic call. Oracle and hidden tests remain unavailable to both agents.
+The human verified **63 tests passed in 55.76s**. Benchmark v2 measured **30.0% accuracy, 0.0% FAR, 0.0% Challenger case yield, 0 counterexamples, 7 generation failures, 0 critic failures, and 27.624s/case**. The Critic was reliable but rejected every patch-failing generated assertion it saw.
 
-Local verification is pending; no improvement claim is made yet.
+This ended the 3.x prompt-tuning line. Independent criticism could keep the system safe, but it could not rescue free-form generated pytest that mixed semantic intent, API selection, expected behavior, and executable syntax in one model output.
 
 Normalized trace: `traces/trace-014-iteration-3-3/`.
+
+---
+
+## trajectory-015 — Advanced Iteration 4: intent-first Challenger
+
+The architecture was changed rather than adding another prompt variant. Challenger no longer writes Python. It emits a typed semantic intent: contract ID, public target, JSON arguments, expectation type, and rationale. Public callable targets are extracted deterministically from the public test import surface.
+
+A separate intent Critic validates whether the compact input/expectation is entailed by the selected public contract before execution. Only supported intents are compiled into pytest by deterministic Python and executed on original and patch. This removes model-authored imports, arbitrary helper logic, and malformed pytest syntax from the challenge path.
+
+Negative verdicts still require critic-approved executable counterexamples. `complete_fix` requires two distinct critic-approved survived intents. Oracle and hidden tests remain unavailable to Challenger, Critic, compiler, and verification policy.
+
+Local verification is pending; no Iteration 4 improvement claim is made yet.
+
+Normalized trace: `traces/trace-015-iteration-4/`.
 
 ---
 
