@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import argparse
 import json
+import threading
+import uuid
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -21,6 +23,9 @@ from .verify_v5 import verify_case_v5
 REPO_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_BENCHMARK_ROOT = REPO_ROOT / "benchmark_v2"
 GITHUB_WORKSPACE_ROOT = REPO_ROOT / "artifacts" / "github-workspaces"
+
+_JOBS: dict[str, dict[str, object]] = {}
+_JOBS_LOCK = threading.Lock()
 
 
 def _execution_payload(result) -> dict[str, object]:
@@ -119,8 +124,120 @@ def _github_metadata_payload(metadata) -> dict[str, object]:
     }
 
 
+def _run_github_verification(request: dict, progress=None) -> dict[str, object]:
+    def emit(stage: str, detail: str) -> None:
+        if progress is not None:
+            progress(stage, detail)
+
+    if request.get("confirm_execution") is not True:
+        raise ValueError("explicit local execution confirmation is required")
+
+    url = str(request.get("url", "")).strip()
+    provider = str(request.get("provider", "ollama"))
+    model = str(request.get("model", "qwen3:0.6b"))
+    llm_timeout = float(request.get("llm_timeout", 30.0))
+    execution_timeout = float(request.get("execution_timeout", 30.0))
+
+    emit("fetching_pr", "Reading public PR metadata, revisions, and linked issue context")
+    metadata = fetch_github_pr_metadata(url)
+
+    emit(
+        "preparing_workspace",
+        "Cloning base and patch revisions, locating changed tests, creating an isolated environment, and installing declared dependencies",
+    )
+    case = prepare_github_pr_case(metadata, GITHUB_WORKSPACE_ROOT)
+    llm = provider_from_env(provider, model, timeout_seconds=llm_timeout)
+
+    reproduction_targets = list(case.test_command[2:])
+    if reproduction_targets:
+        emit("reproducing_trigger", f"Running patch-authored reproduction tests on base and patch: {', '.join(reproduction_targets)}")
+    else:
+        emit("reproducing_trigger", "Running the detected pytest suite on base and patch")
+
+    result = verify_case_v5(
+        case,
+        llm,
+        artifacts_root=REPO_ROOT / "artifacts",
+        timeout_seconds=execution_timeout,
+    )
+
+    source = _github_metadata_payload(metadata)
+    source["mode"] = "github_pr"
+    source["workspace"] = str(case.root.resolve())
+    source["test_command"] = " ".join(case.test_command)
+    source["reproduction_targets"] = reproduction_targets
+    source["reproduction_mode"] = "patch_changed_tests" if reproduction_targets else "full_suite_fallback"
+    payload = _verification_payload(result, case, source=source)
+
+    if result.test_delta.classification == "suite_repaired" and result.verdict.value == "inconclusive":
+        emit(
+            "challenging_patch",
+            "The trigger is repaired; compiling contract probes or selecting bounded nearby existing tests for adversarial checking",
+        )
+        nearby = run_nearby_adversary(
+            case,
+            llm,
+            budget=3,
+            timeout_seconds=execution_timeout,
+        )
+        nearby_payload = _nearby_payload(nearby)
+        payload["nearby_adversary"] = nearby_payload
+        (result.run_root / "nearby_adversary.json").write_text(
+            json.dumps(nearby_payload, indent=2) + "\n",
+            encoding="utf-8",
+        )
+        regressions = [item for item in nearby.executions if item.is_regression]
+        if regressions:
+            first = regressions[0]
+            payload["verdict"] = "regression_introduced"
+            payload["reason"] = (
+                "The reported trigger is repaired, but an agent-prioritized existing nearby test passes on the base revision "
+                f"and fails on the patch: {first.candidate.nodeid}."
+            )
+            payload["challenge_counterexamples"] = int(payload["challenge_counterexamples"]) + 1
+        elif nearby.executions:
+            survived = sum(item.classification == "survived" for item in nearby.executions)
+            payload["reason"] = (
+                "The reported trigger is repaired and the bounded nearby-test adversary found no regression "
+                f"across {survived} surviving existing test{'s' if survived != 1 else ''}. "
+                "No independent contract-derived counterexample or sufficient completeness evidence was available, so the verdict remains inconclusive."
+            )
+
+    emit("verdict_ready", f"Evidence collection complete: {payload['verdict']}")
+    return payload
+
+
+def _job_progress(job_id: str, stage: str, detail: str) -> None:
+    with _JOBS_LOCK:
+        job = _JOBS.get(job_id)
+        if job is None:
+            return
+        events = job.setdefault("events", [])
+        assert isinstance(events, list)
+        events.append({"stage": stage, "detail": detail})
+        job["stage"] = stage
+        job["detail"] = detail
+
+
+def _job_worker(job_id: str, request: dict) -> None:
+    try:
+        payload = _run_github_verification(
+            request,
+            progress=lambda stage, detail: _job_progress(job_id, stage, detail),
+        )
+        with _JOBS_LOCK:
+            job = _JOBS[job_id]
+            job["status"] = "complete"
+            job["result"] = payload
+    except (GitHubPRIngestionError, CaseFormatError, LLMError, OSError, ValueError, json.JSONDecodeError) as exc:
+        with _JOBS_LOCK:
+            job = _JOBS[job_id]
+            job["status"] = "error"
+            job["error"] = str(exc)
+
+
 class DashboardHandler(BaseHTTPRequestHandler):
-    server_version = "refute-dashboard/0.4"
+    server_version = "refute-dashboard/0.5"
 
     def _send_json(self, status: int, payload: object) -> None:
         body = json.dumps(payload, indent=2).encode("utf-8")
@@ -149,6 +266,16 @@ class DashboardHandler(BaseHTTPRequestHandler):
         if path == "/api/health":
             self._send_json(HTTPStatus.OK, {"status": "ok", "iteration": "5", "github_pr_mode": True})
             return
+        if path.startswith("/api/github/jobs/"):
+            job_id = path.rsplit("/", 1)[-1]
+            with _JOBS_LOCK:
+                job = _JOBS.get(job_id)
+                snapshot = json.loads(json.dumps(job)) if job is not None else None
+            if snapshot is None:
+                self._send_json(HTTPStatus.NOT_FOUND, {"error": "unknown verification job"})
+            else:
+                self._send_json(HTTPStatus.OK, snapshot)
+            return
         if path == "/api/cases":
             try:
                 roots = sorted(DEFAULT_BENCHMARK_ROOT.glob("case_*"))
@@ -174,6 +301,9 @@ class DashboardHandler(BaseHTTPRequestHandler):
         if path == "/api/github/inspect":
             self._inspect_github_pr()
             return
+        if path == "/api/github/verify/start":
+            self._start_github_job()
+            return
         if path == "/api/github/verify":
             self._verify_github_pr()
             return
@@ -191,59 +321,32 @@ class DashboardHandler(BaseHTTPRequestHandler):
         except (GitHubPRIngestionError, OSError, ValueError, json.JSONDecodeError) as exc:
             self._send_json(HTTPStatus.BAD_REQUEST, {"error": str(exc)})
 
-    def _verify_github_pr(self) -> None:
+    def _start_github_job(self) -> None:
         try:
             request = self._read_json()
             if request.get("confirm_execution") is not True:
                 raise ValueError("explicit local execution confirmation is required")
-            url = str(request.get("url", "")).strip()
-            provider = str(request.get("provider", "ollama"))
-            model = str(request.get("model", "qwen3:0.6b"))
-            llm_timeout = float(request.get("llm_timeout", 30.0))
-            execution_timeout = float(request.get("execution_timeout", 30.0))
+            job_id = uuid.uuid4().hex[:12]
+            with _JOBS_LOCK:
+                _JOBS[job_id] = {
+                    "job_id": job_id,
+                    "status": "running",
+                    "stage": "queued",
+                    "detail": "Verification queued",
+                    "events": [],
+                    "result": None,
+                    "error": None,
+                }
+            thread = threading.Thread(target=_job_worker, args=(job_id, request), daemon=True)
+            thread.start()
+            self._send_json(HTTPStatus.ACCEPTED, {"job_id": job_id})
+        except (ValueError, json.JSONDecodeError) as exc:
+            self._send_json(HTTPStatus.BAD_REQUEST, {"error": str(exc)})
 
-            metadata = fetch_github_pr_metadata(url)
-            case = prepare_github_pr_case(metadata, GITHUB_WORKSPACE_ROOT)
-            llm = provider_from_env(provider, model, timeout_seconds=llm_timeout)
-            result = verify_case_v5(
-                case,
-                llm,
-                artifacts_root=REPO_ROOT / "artifacts",
-                timeout_seconds=execution_timeout,
-            )
-            source = _github_metadata_payload(metadata)
-            source["mode"] = "github_pr"
-            source["workspace"] = str(case.root.resolve())
-            source["test_command"] = " ".join(case.test_command)
-            source["reproduction_targets"] = list(case.test_command[2:])
-            source["reproduction_mode"] = (
-                "patch_changed_tests" if len(case.test_command) > 2 else "full_suite_fallback"
-            )
-            payload = _verification_payload(result, case, source=source)
-
-            if result.test_delta.classification == "suite_repaired" and result.verdict.value == "inconclusive":
-                nearby = run_nearby_adversary(
-                    case,
-                    llm,
-                    budget=3,
-                    timeout_seconds=execution_timeout,
-                )
-                nearby_payload = _nearby_payload(nearby)
-                payload["nearby_adversary"] = nearby_payload
-                (result.run_root / "nearby_adversary.json").write_text(
-                    json.dumps(nearby_payload, indent=2) + "\n",
-                    encoding="utf-8",
-                )
-                regressions = [item for item in nearby.executions if item.is_regression]
-                if regressions:
-                    first = regressions[0]
-                    payload["verdict"] = "regression_introduced"
-                    payload["reason"] = (
-                        "The reported trigger is repaired, but an agent-prioritized existing nearby test passes on the base revision "
-                        f"and fails on the patch: {first.candidate.nodeid}."
-                    )
-                    payload["challenge_counterexamples"] = int(payload["challenge_counterexamples"]) + 1
-
+    def _verify_github_pr(self) -> None:
+        try:
+            request = self._read_json()
+            payload = _run_github_verification(request)
             self._send_json(HTTPStatus.OK, payload)
         except (GitHubPRIngestionError, CaseFormatError, LLMError, OSError, ValueError, json.JSONDecodeError) as exc:
             self._send_json(HTTPStatus.BAD_REQUEST, {"error": str(exc)})
