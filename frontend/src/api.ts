@@ -24,6 +24,22 @@ export type ProbePayload = {
   patched: ExecutionPayload;
 };
 
+export type NearbyAdversaryExecution = {
+  candidate_id: string;
+  nodeid: string;
+  classification: string;
+  original: ExecutionPayload;
+  patched: ExecutionPayload;
+};
+
+export type NearbyAdversaryPayload = {
+  candidate_count: number;
+  selected_ids: string[];
+  used_fallback: boolean;
+  collection_error: string | null;
+  executions: NearbyAdversaryExecution[];
+};
+
 export type GitHubPRMetadata = {
   url: string;
   owner: string;
@@ -58,6 +74,7 @@ export type VerificationPayload = {
   probes: ProbePayload[];
   evidence_path: string;
   source?: Record<string, unknown> | null;
+  nearby_adversary?: NearbyAdversaryPayload | null;
 };
 
 const API_ROOT = import.meta.env.VITE_REFUTE_API ?? "http://127.0.0.1:8765";
