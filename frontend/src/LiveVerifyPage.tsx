@@ -22,6 +22,22 @@ function shortSha(value: string) {
   return value.slice(0, 8);
 }
 
+function normalizeHeading(value: string) {
+  return value.trim().replace(/^#+\s*/, "").replace(/\s+/g, " ").toLowerCase();
+}
+
+function withoutDuplicateLeadingTitle(markdown: string, title: string) {
+  const lines = markdown.replace(/^\uFEFF/, "").split(/\r?\n/);
+  const firstContent = lines.findIndex((line) => line.trim().length > 0);
+  if (firstContent < 0) return markdown;
+  const line = lines[firstContent];
+  if (/^#{1,6}\s+/.test(line) && normalizeHeading(line) === normalizeHeading(title)) {
+    lines.splice(firstContent, 1);
+    while (lines[firstContent]?.trim() === "") lines.splice(firstContent, 1);
+  }
+  return lines.join("\n").trim();
+}
+
 export default function LiveVerifyPage() {
   const [mode, setMode] = useState<Mode>("github");
   const [cases, setCases] = useState<DashboardCase[]>([]);
@@ -86,11 +102,16 @@ export default function LiveVerifyPage() {
     }
   }
 
+  const targetedReproduction = result?.source?.["reproduction_mode"] === "patch_changed_tests";
+  const reproductionTargets = Array.isArray(result?.source?.["reproduction_targets"])
+    ? result?.source?.["reproduction_targets"] as string[]
+    : [];
+
   const timeline = result
     ? [
         {
-          title: "Public tests",
-          detail: `Original ${statusText(result.original.passed, result.original.timed_out, result.original.exit_code)} → patched ${statusText(result.patched.passed, result.patched.timed_out, result.patched.exit_code)}`,
+          title: mode === "github" && targetedReproduction ? "Targeted reproduction" : "Public tests",
+          detail: `${targetedReproduction && reproductionTargets.length ? `${reproductionTargets.join(", ")} · ` : ""}Original ${statusText(result.original.passed, result.original.timed_out, result.original.exit_code)} → patched ${statusText(result.patched.passed, result.patched.timed_out, result.patched.exit_code)}`,
           state: result.patched.passed ? "done" : "warn",
         },
         {
@@ -115,12 +136,14 @@ export default function LiveVerifyPage() {
       ]
     : [];
 
-  const issueText = mode === "github"
-    ? githubMeta?.issue_text ?? "Paste a public GitHub pull request URL to inspect its public contract and revisions."
-    : selectedCase?.issue_text ?? (loadingCases ? "Loading case…" : "Benchmark data unavailable.");
   const issueTitle = mode === "github"
     ? githubMeta?.title ?? "Public GitHub pull request"
     : selectedCase?.title ?? selected;
+  const issueText = mode === "github"
+    ? githubMeta
+      ? withoutDuplicateLeadingTitle(githubMeta.body || githubMeta.issue_text, githubMeta.title)
+      : "Paste a public GitHub pull request URL to inspect its public contract and revisions."
+    : selectedCase?.issue_text ?? (loadingCases ? "Loading case…" : "Benchmark data unavailable.");
 
   return (
     <div className="app-shell">
@@ -195,7 +218,7 @@ export default function LiveVerifyPage() {
                   <button className="pill-button orange full" onClick={runVerification} disabled={running || !githubMeta || !confirmed}>
                     {running ? <><Sparkles size={15} /> Provisioning & verifying…</> : <><Play size={15} fill="currentColor" /> Verify patch</>}
                   </button>
-                  <p className="microcopy">Current real-repo scope: public GitHub PRs, Python, and a detectable pytest test surface. Target dependencies are installed into an isolated per-run environment, not your refute environment.</p>
+                  <p className="microcopy">When a PR changes pytest files, refute uses those patch-authored tests as a deterministic reproduction against both base and patch. Otherwise it falls back to the full suite.</p>
                 </>
               ) : (
                 <>
@@ -240,7 +263,7 @@ export default function LiveVerifyPage() {
                 </div>
                 <div className="timeline">
                   {!result && !running && <div className="timeline-loading"><span /> ready to collect evidence</div>}
-                  {running && <div className="timeline-loading"><span /> cloning revisions, provisioning an isolated environment, executing tests, planning probes, and collecting evidence…</div>}
+                  {running && <div className="timeline-loading"><span /> cloning revisions, provisioning an isolated environment, locating changed tests, reproducing the reported behavior, planning probes, and collecting evidence…</div>}
                   {timeline.map((item, index) => (
                     <div className="timeline-row" key={`${item.title}-${index}`}>
                       <div className={`timeline-icon ${item.state}`}>{item.state === "done" ? <Check size={14} /> : <X size={14} />}</div>
