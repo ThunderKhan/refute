@@ -1,0 +1,27 @@
+Verification status: PENDING LOCAL RUN
+
+Iteration 3.3 hypothesis:
+Retain deterministic contract-ID grounding from 3.2, but separate challenge proposal from evidence qualification. Any executable challenge that fails on the patch must pass a strict contract-entailment Critic before it can influence the verdict.
+
+Required local checks:
+1. git pull
+2. python -m pytest
+3. python scripts/build_benchmark_v2.py
+4. targeted case_001, case_002, case_003, case_006, case_007 with --iteration 3.3
+5. full Benchmark v2 evaluation with --iteration 3.3
+
+Observe specifically:
+- whether case_002 can produce a critic-approved remaining-requirement counterexample;
+- whether case_003 and case_007 can produce critic-approved regression counterexamples;
+- whether bogus fail/fail challenges on true complete fixes are rejected by the Critic rather than becoming partial_fix;
+- challenge generation failures and critic failures separately;
+- FAR, accuracy, Challenger yield, and runtime.
+
+Frozen comparisons:
+- Baseline v2: 10.0% accuracy / 57.1% FAR / 2.527s
+- Iteration 2.4: 60.0% accuracy / 57.1% FAR / 0.929s
+- Iteration 3: 40.0% accuracy / 0.0% FAR / 14.774s
+- Iteration 3.1: 30.0% accuracy / 0.0% FAR / 20.438s
+- Iteration 3.2: 30.0% accuracy / 0.0% FAR / 25.966s
+
+Do not claim Iteration 3.3 improvement until a clean local result is supplied.
