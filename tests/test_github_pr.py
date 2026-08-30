@@ -2,7 +2,13 @@ from pathlib import Path
 
 import pytest
 
-from refute.github_pr import GitHubPRIngestionError, _detect_pytest, _linked_issue_number, parse_github_pr_url
+from refute.github_pr import (
+    GitHubPRIngestionError,
+    _declared_test_dependencies,
+    _detect_pytest,
+    _linked_issue_number,
+    parse_github_pr_url,
+)
 
 
 def test_parse_github_pr_url() -> None:
@@ -39,3 +45,42 @@ def test_detect_pytest_from_tests_directory(tmp_path: Path) -> None:
 
 def test_detect_pytest_rejects_unknown_project(tmp_path: Path) -> None:
     assert _detect_pytest(tmp_path) is None
+
+
+def test_declared_test_dependencies_collects_runtime_and_test_groups(tmp_path: Path) -> None:
+    (tmp_path / "pyproject.toml").write_text(
+        """
+[project]
+name = "sample"
+version = "0.1.0"
+dependencies = ["pydantic>=2"]
+
+[project.optional-dependencies]
+test = ["pytest>=8", "requests>=2"]
+
+[dependency-groups]
+dev = ["pytest-cov>=5"]
+""".strip(),
+        encoding="utf-8",
+    )
+
+    assert _declared_test_dependencies(tmp_path) == [
+        "pydantic>=2",
+        "pytest>=8",
+        "requests>=2",
+        "pytest-cov>=5",
+    ]
+
+
+def test_declared_test_dependencies_adds_pytest_when_missing(tmp_path: Path) -> None:
+    (tmp_path / "pyproject.toml").write_text(
+        """
+[project]
+name = "sample"
+version = "0.1.0"
+dependencies = ["requests>=2"]
+""".strip(),
+        encoding="utf-8",
+    )
+
+    assert _declared_test_dependencies(tmp_path) == ["requests>=2", "pytest>=8,<9"]
