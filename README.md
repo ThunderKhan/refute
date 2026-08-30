@@ -1,6 +1,6 @@
 <div align="center">
 
-# refute
+<img src="assets/refute-hero.png" alt="refute — evidence-backed patch verification" width="100%">
 
 ![Python](https://img.shields.io/badge/Python-3.11%2B-3776AB?logo=python&logoColor=white)
 ![Runtime Dependencies](https://img.shields.io/badge/runtime%20dependencies-zero-00b894)
@@ -37,6 +37,10 @@ The system runs the original and patched code, derives nearby checks from the pu
 
 `case_002` is the simplest example of the core idea: the reported lower boundary is repaired, but the same public contract still requires the upper boundary to work.
 
+<p align="center">
+  <img src="assets/refute-case-002-falsification.png" alt="case_002 falsification walkthrough showing a partial fix discovered by refute" width="100%">
+</p>
+
 ---
 
 ## How it works
@@ -46,6 +50,10 @@ The final architecture separates semantic prioritization from mechanically obser
 The governing design rule is:
 
 > **Agents prioritize. Deterministic tools observe. Evidence constrains the verdict.**
+
+<p align="center">
+  <img src="assets/refute-architecture.png" alt="refute architecture: agents prioritize, deterministic tools observe, evidence constrains the verdict" width="100%">
+</p>
 
 The final workflow deliberately gives the model a narrow job. It does **not** author arbitrary pytest code or invent the final verdict. Mechanically derivable checks are compiled deterministically from the public issue contract; the agent only prioritizes which valid probes to try first.
 
@@ -92,6 +100,10 @@ issue + original + patched code
 
 Every run resolves to one of five outcomes. The verdict is determined by the observed evidence pattern, not by an unconstrained model judgment.
 
+<p align="center">
+  <img src="assets/refute-verdict-system.png" alt="refute five-way verdict system and evidence patterns" width="100%">
+</p>
+
 | Verdict | Meaning |
 |---|---|
 | `complete_fix` | the reported trigger is repaired and enough independent nearby checks also survive |
@@ -120,6 +132,10 @@ All measurements below use local Ollama with `qwen3:0.6b` at temperature `0`.
 | Contract Critic 3.3 | 30.0% | 0.0% | 27.624s |
 | Intent-first 4 | 30.0% | 0.0% | 13.026s |
 | **Deterministic contract probes 5** | **100.0%** | **0.0%** | **5.077s** |
+
+<p align="center">
+  <img src="assets/refute-results-comparison.png" alt="refute results comparison between Baseline v2 and Iteration 5" width="100%">
+</p>
 
 ### Frozen Iteration 5 result
 
@@ -150,6 +166,10 @@ The strongest improvement did **not** come from a better prompt.
 Early iterations gave the model increasing responsibility: generating pytest source, grounding tests in issue text, selecting contract IDs, and then having a second model criticize generated tests. Those systems became safer, but accuracy stalled and runtime increased.
 
 Iteration 4 removed Python generation but still asked the model to invent test semantics. Accuracy remained at 30%.
+
+<p align="center">
+  <img src="assets/refute-engineering-journey.png" alt="refute engineering journey from prompt-heavy experiments to deterministic evidence-backed verification" width="100%">
+</p>
 
 Iteration 5 changed the responsibility boundary:
 
