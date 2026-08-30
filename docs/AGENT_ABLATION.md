@@ -40,11 +40,9 @@ public contract
 
 No LLM/provider is instantiated by the ablation evaluator.
 
-The default probe budget is `2`, matching the final Benchmark v2 Iteration 5 evaluation.
+The probe budget is `2`, matching the final Benchmark v2 Iteration 5 evaluation.
 
 ## Run
-
-From the repository root after building Benchmark v2:
 
 ```powershell
 python scripts/eval_probe_order_ablation.py benchmark_v2 --oracle-root eval\benchmark_v2 --probe-budget 2
@@ -59,12 +57,29 @@ artifacts/eval/iteration_5_probe_order_ablation/
   report.md
 ```
 
+## Observed result
+
+The ablation was run after the verifier freeze. It matched Iteration 5 on every Benchmark v2 case:
+
+```text
+cases: 10
+probe budget: 2
+verdict accuracy: 100.0%
+false acceptance rate: 0.0%
+challenge counterexamples: 4
+average runtime: 2.043s
+```
+
+All ten verdicts matched the Benchmark v2 oracle, including the same four counterexample-producing cases. No model/provider was used.
+
 ## Interpretation
 
-This is a component ablation, not a new optimized iteration.
+The correct conclusion is deliberately narrow:
 
-- If deterministic ordering matches Iteration 5, the correct conclusion is that agent prioritization was not necessary on this benchmark under this budget.
-- If Iteration 5 outperforms deterministic ordering, the difference is evidence that bounded semantic prioritization contributes under the same compiled probe pool and execution budget.
-- Either outcome must be reported. The verifier must not be modified in response to the ablation result.
+> **On Benchmark v2, with a probe budget of two, LLM probe prioritization was not necessary for the final 100% verdict accuracy. The deterministic contract compiler plus deterministic probe order was sufficient.**
 
-The frozen Iteration 5 headline result remains a separate historical measurement. This ablation is intended to clarify **which component produced that result**, not to replace or tune it.
+This does **not** invalidate the Iteration 5 architecture, but it changes the attribution of the measured improvement. The benchmark evidence supports the deterministic responsibility-boundary change much more strongly than it supports a claim that semantic probe prioritization improved accuracy.
+
+The planner remains part of the product architecture for situations where a bounded probe pool contains more candidate checks than the execution budget can cover, but Benchmark v2 does not demonstrate a measurable planner advantage.
+
+This negative/null ablation result is preserved rather than hidden. The next validation step is a post-freeze holdout: new cases are frozen before running the unchanged verifier and the same deterministic-order ablation against them.
