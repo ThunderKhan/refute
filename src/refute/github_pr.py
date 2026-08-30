@@ -11,7 +11,7 @@ import urllib.error
 import urllib.request
 import uuid
 from dataclasses import dataclass
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from urllib.parse import urlparse
 
 from .models import VerificationCase
@@ -136,6 +136,10 @@ def fetch_github_pr_metadata(value: str) -> GitHubPRMetadata:
 
 
 def _run_git(args: list[str], cwd: Path | None = None) -> None:
+    _git_output(args, cwd)
+
+
+def _git_output(args: list[str], cwd: Path | None = None) -> str:
     try:
         completed = subprocess.run(
             ["git", *args], cwd=cwd,
@@ -147,6 +151,7 @@ def _run_git(args: list[str], cwd: Path | None = None) -> None:
     if completed.returncode != 0:
         detail = (completed.stderr or completed.stdout).strip()
         raise GitHubPRIngestionError(f"git operation failed: {detail[:400]}")
+    return completed.stdout
 
 
 def _detect_pytest(repo: Path) -> tuple[str, ...] | None:
@@ -155,6 +160,37 @@ def _detect_pytest(repo: Path) -> tuple[str, ...] | None:
     if not has_tests and not has_config:
         return None
     return (sys.executable, "-m", "pytest", "-q")
+
+
+def _is_pytest_file(path: str) -> bool:
+    candidate = PurePosixPath(path)
+    name = candidate.name
+    return path.endswith(".py") and (
+        name.startswith("test_")
+        or name.endswith("_test.py")
+        or "tests" in candidate.parts
+    )
+
+
+def _changed_test_files(source: Path, base_sha: str, head_sha: str) -> tuple[str, ...]:
+    output = _git_output(["diff", "--name-only", "--diff-filter=ACMR", base_sha, head_sha, "--"], cwd=source)
+    return tuple(line.strip() for line in output.splitlines() if line.strip() and _is_pytest_file(line.strip()))
+
+
+def _materialize_patch_tests_on_base(original: Path, patched: Path, test_files: tuple[str, ...]) -> None:
+    """Place patch-authored/modified tests onto the base worktree for reproduction.
+
+    This is deliberately limited to changed pytest-looking files. Production code
+    remains at the base revision, so a failure can establish the reported trigger
+    without asking an LLM to invent executable assertions.
+    """
+    for relative in test_files:
+        source = patched / Path(relative)
+        destination = original / Path(relative)
+        if not source.is_file():
+            continue
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(source, destination)
 
 
 def _venv_python(venv_root: Path) -> Path:
@@ -254,7 +290,8 @@ def _write_pytest_wrapper(run_root: Path, runtime_python: Path) -> Path:
         "if existing:\n"
         "    pythonpath.append(existing)\n"
         "env['PYTHONPATH'] = os.pathsep.join(pythonpath)\n"
-        "completed = subprocess.run([str(RUNTIME), '-m', 'pytest', '-q'], cwd=cwd, env=env)\n"
+        "command = [str(RUNTIME), '-m', 'pytest', '-q', *sys.argv[1:]]\n"
+        "completed = subprocess.run(command, cwd=cwd, env=env)\n"
         "raise SystemExit(completed.returncode)\n",
         encoding="utf-8",
     )
@@ -283,23 +320,35 @@ def prepare_github_pr_case(metadata: GitHubPRMetadata, workspace_root: str | Pat
         shutil.rmtree(run_root, ignore_errors=True)
         raise
 
-    test_command = _detect_pytest(patched)
-    if test_command is None:
+    if _detect_pytest(patched) is None:
         raise GitHubPRIngestionError(
             "refute real-repo mode currently supports public Python repositories with a detectable pytest test surface"
         )
+
+    changed_tests = _changed_test_files(source, metadata.base_sha, metadata.head_sha)
+    if changed_tests:
+        _materialize_patch_tests_on_base(original, patched, changed_tests)
 
     runtime_python = _provision_runtime(patched, run_root)
     wrapper = _write_pytest_wrapper(run_root, runtime_python)
 
     issue_path = run_root / "issue.md"
     issue_path.write_text(metadata.issue_text, encoding="utf-8")
+    targets = changed_tests if changed_tests else ()
+    mode_note = (
+        "targeted reproduction using patch-changed pytest files"
+        if changed_tests
+        else "full-suite fallback because the PR changed no pytest files"
+    )
     return VerificationCase(
         case_id=f"github_{metadata.owner}_{metadata.repo}_pr_{metadata.number}",
         root=run_root,
         issue_path=issue_path,
         original_path=original,
         patched_path=patched,
-        test_command=(sys.executable, str(wrapper)),
-        notes="public GitHub PR ingestion; isolated dependency environment; no evaluator oracle",
+        test_command=(sys.executable, str(wrapper), *targets),
+        notes=(
+            "public GitHub PR ingestion; isolated dependency environment; "
+            f"{mode_note}; no evaluator oracle"
+        ),
     )
