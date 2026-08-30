@@ -1,17 +1,36 @@
 import { useEffect, useMemo, useState } from "react";
-import { ArrowLeft, Check, CircleDot, Github, Play, ShieldCheck, Sparkles, TestTube2, X } from "lucide-react";
-import { listCases, verifyCase, type DashboardCase, type VerificationPayload } from "./api";
+import { ArrowLeft, Check, CircleDot, Github, Link2, Play, ShieldCheck, Sparkles, TestTube2, X } from "lucide-react";
+import {
+  inspectGitHubPR,
+  listCases,
+  verifyCase,
+  verifyGitHubPR,
+  type DashboardCase,
+  type GitHubPRMetadata,
+  type VerificationPayload,
+} from "./api";
+
+type Mode = "github" | "benchmark";
 
 function statusText(passed: boolean, timedOut: boolean, exitCode: number | null) {
   if (timedOut) return "TIMEOUT";
   return passed ? "PASS" : `FAIL${exitCode === null ? "" : ` · exit ${exitCode}`}`;
 }
 
+function shortSha(value: string) {
+  return value.slice(0, 8);
+}
+
 export default function LiveVerifyPage() {
+  const [mode, setMode] = useState<Mode>("github");
   const [cases, setCases] = useState<DashboardCase[]>([]);
   const [selected, setSelected] = useState("case_002");
+  const [githubUrl, setGithubUrl] = useState("");
+  const [githubMeta, setGithubMeta] = useState<GitHubPRMetadata | null>(null);
+  const [confirmed, setConfirmed] = useState(false);
   const [result, setResult] = useState<VerificationPayload | null>(null);
   const [loadingCases, setLoadingCases] = useState(true);
+  const [inspecting, setInspecting] = useState(false);
   const [running, setRunning] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -23,7 +42,7 @@ export default function LiveVerifyPage() {
           setSelected(items[0].case_id);
         }
       })
-      .catch((err: Error) => setError(`Dashboard API unavailable: ${err.message}`))
+      .catch(() => undefined)
       .finally(() => setLoadingCases(false));
   }, []);
 
@@ -32,13 +51,32 @@ export default function LiveVerifyPage() {
     [cases, selected],
   );
 
+  async function inspectPR() {
+    if (!githubUrl.trim() || inspecting || running) return;
+    setInspecting(true);
+    setError(null);
+    setResult(null);
+    setConfirmed(false);
+    try {
+      const metadata = await inspectGitHubPR(githubUrl.trim());
+      setGithubMeta(metadata);
+    } catch (err) {
+      setGithubMeta(null);
+      setError(err instanceof Error ? err.message : "could not inspect GitHub PR");
+    } finally {
+      setInspecting(false);
+    }
+  }
+
   async function runVerification() {
     if (running) return;
     setRunning(true);
     setError(null);
     setResult(null);
     try {
-      const next = await verifyCase(selected);
+      const next = mode === "github"
+        ? await verifyGitHubPR(githubUrl.trim())
+        : await verifyCase(selected);
       setResult(next);
     } catch (err) {
       setError(err instanceof Error ? err.message : "verification failed");
@@ -76,6 +114,13 @@ export default function LiveVerifyPage() {
       ]
     : [];
 
+  const issueText = mode === "github"
+    ? githubMeta?.issue_text ?? "Paste a public GitHub pull request URL to inspect its public contract and revisions."
+    : selectedCase?.issue_text ?? (loadingCases ? "Loading case…" : "Benchmark data unavailable.");
+  const issueTitle = mode === "github"
+    ? githubMeta?.title ?? "Public GitHub pull request"
+    : selectedCase?.title ?? selected;
+
   return (
     <div className="app-shell">
       <header className="nav-wrap">
@@ -88,9 +133,7 @@ export default function LiveVerifyPage() {
             <a href="/journey">Journey</a>
           </div>
           <div className="nav-actions">
-            <a className="icon-button desktop-only" href="https://github.com/ThunderKhan/refute" target="_blank" rel="noreferrer" aria-label="GitHub">
-              <Github size={17} />
-            </a>
+            <a className="icon-button desktop-only" href="https://github.com/ThunderKhan/refute" target="_blank" rel="noreferrer" aria-label="GitHub"><Github size={17} /></a>
             <a className="pill-button dark" href="/">Overview <ArrowLeft size={15} /></a>
           </div>
         </nav>
@@ -100,68 +143,106 @@ export default function LiveVerifyPage() {
         <section className="page-hero">
           <div className="container page-hero-grid">
             <div>
-              <div className="eyebrow"><CircleDot size={14} /> Live verification</div>
-              <h1>Put the patch on trial.</h1>
+              <div className="eyebrow"><CircleDot size={14} /> Real patch verification</div>
+              <h1>Paste the PR.<br />Get the verdict.</h1>
             </div>
-            <p>This page now calls the real Iteration 5 Python engine. Every verdict, probe outcome, and evidence path below comes from the local refute run.</p>
+            <p>refute checks a public Python/pytest pull request locally, compares base and patched revisions, challenges repaired behavior with contract-derived probes, and returns an evidence-backed verdict.</p>
           </div>
         </section>
 
         <section className="section-pad verify-workspace">
           <div className="container verify-grid">
-            <aside className="control-card">
-              <div className="card-label">Verification input</div>
-              <label>Benchmark case</label>
-              <select
-                value={selected}
-                disabled={loadingCases || running}
-                onChange={(event) => {
-                  setSelected(event.target.value);
-                  setResult(null);
-                  setError(null);
-                }}
-              >
-                {cases.map((item) => <option key={item.case_id} value={item.case_id}>{item.case_id}</option>)}
-              </select>
+            <aside className="control-card live-control-card">
+              <div className="mode-switch" role="tablist" aria-label="Verification mode">
+                <button className={mode === "github" ? "active" : ""} onClick={() => { setMode("github"); setResult(null); setError(null); }}>GitHub PR</button>
+                <button className={mode === "benchmark" ? "active" : ""} onClick={() => { setMode("benchmark"); setResult(null); setError(null); }}>Benchmark</button>
+              </div>
 
-              <label>Provider</label>
-              <div className="readonly-field"><span>Ollama</span><small>local</small></div>
-              <label>Model</label>
-              <div className="readonly-field"><span>qwen3:0.6b</span><small>temperature 0</small></div>
+              {mode === "github" ? (
+                <>
+                  <div className="card-label">Developer workflow</div>
+                  <label>Public GitHub pull request</label>
+                  <div className="github-url-field">
+                    <Link2 size={15} />
+                    <input
+                      value={githubUrl}
+                      disabled={running || inspecting}
+                      onChange={(event) => { setGithubUrl(event.target.value); setGithubMeta(null); setConfirmed(false); setResult(null); }}
+                      onKeyDown={(event) => { if (event.key === "Enter") void inspectPR(); }}
+                      placeholder="https://github.com/owner/repo/pull/123"
+                    />
+                  </div>
+                  <button className="pill-button dark full inspect-button" onClick={inspectPR} disabled={!githubUrl.trim() || inspecting || running}>
+                    {inspecting ? <><Sparkles size={15} /> Inspecting…</> : <><Github size={15} /> Inspect PR</>}
+                  </button>
 
-              <button className="pill-button orange full" onClick={runVerification} disabled={running || loadingCases || cases.length === 0}>
-                {running ? <><Sparkles size={15} /> Verifying…</> : <><Play size={15} fill="currentColor" /> Run verification</>}
-              </button>
-              <p className="microcopy">Local execution only. Benchmark oracle and hidden tests are not sent to the verifier.</p>
+                  {githubMeta && (
+                    <div className="pr-summary-mini">
+                      <strong>{githubMeta.owner}/{githubMeta.repo} #{githubMeta.number}</strong>
+                      <span>{githubMeta.changed_files} files · +{githubMeta.additions} / -{githubMeta.deletions}</span>
+                      <span>base {shortSha(githubMeta.base_sha)} → head {shortSha(githubMeta.head_sha)}</span>
+                    </div>
+                  )}
+
+                  {githubMeta && (
+                    <label className="execution-consent">
+                      <input type="checkbox" checked={confirmed} onChange={(event) => setConfirmed(event.target.checked)} />
+                      <span>I understand this runs the PR's tests on my machine.</span>
+                    </label>
+                  )}
+
+                  <button className="pill-button orange full" onClick={runVerification} disabled={running || !githubMeta || !confirmed}>
+                    {running ? <><Sparkles size={15} /> Verifying PR…</> : <><Play size={15} fill="currentColor" /> Verify patch</>}
+                  </button>
+                  <p className="microcopy">Current real-repo scope: public GitHub PRs, Python, and a detectable pytest test surface. Dependencies are not installed automatically.</p>
+                </>
+              ) : (
+                <>
+                  <div className="card-label">Reproducible demo</div>
+                  <label>Benchmark case</label>
+                  <select value={selected} disabled={loadingCases || running} onChange={(event) => { setSelected(event.target.value); setResult(null); setError(null); }}>
+                    {cases.map((item) => <option key={item.case_id} value={item.case_id}>{item.case_id}</option>)}
+                  </select>
+                  <label>Provider</label>
+                  <div className="readonly-field"><span>Ollama</span><small>local</small></div>
+                  <label>Model</label>
+                  <div className="readonly-field"><span>qwen3:0.6b</span><small>temperature 0</small></div>
+                  <button className="pill-button orange full" onClick={runVerification} disabled={running || loadingCases || cases.length === 0}>
+                    {running ? <><Sparkles size={15} /> Verifying…</> : <><Play size={15} fill="currentColor" /> Run benchmark case</>}
+                  </button>
+                  <p className="microcopy">Frozen Benchmark v2 remains the reproducible evaluation harness behind the measured results.</p>
+                </>
+              )}
             </aside>
 
             <div className="verify-main">
               <div className="issue-card">
-                <div className="card-label">Public issue contract</div>
-                <h3>{selectedCase?.title ?? selected}</h3>
-                <p className="issue-copy-live">{selectedCase?.issue_text ?? (loadingCases ? "Loading case…" : "Start the dashboard API to load public case data.")}</p>
+                <div className="card-label">{mode === "github" ? "PR / issue contract" : "Public issue contract"}</div>
+                <h3>{issueTitle}</h3>
+                <p className="issue-copy-live">{issueText}</p>
+                {githubMeta && githubMeta.linked_issue_number && (
+                  <div className="linked-issue-chip">Linked issue #{githubMeta.linked_issue_number}{githubMeta.linked_issue_title ? ` · ${githubMeta.linked_issue_title}` : ""}</div>
+                )}
               </div>
 
               {error && (
                 <div className="verdict-card verdict-partial live-error-card">
-                  <div><div className="card-label">Connection / verification error</div><h2>needs_attention</h2></div>
+                  <div><div className="card-label">Could not complete verification</div><h2>needs_attention</h2></div>
                   <p>{error}</p>
                 </div>
               )}
 
               <div className="timeline-card">
                 <div className="timeline-head">
-                  <div><div className="card-label">Evidence timeline</div><h3>{result?.case_id ?? selected}</h3></div>
+                  <div><div className="card-label">Evidence timeline</div><h3>{result?.case_id ?? (mode === "github" ? githubMeta ? `${githubMeta.repo}#${githubMeta.number}` : "waiting for PR" : selected)}</h3></div>
                   <span className="status-pill">Iteration 5 · live</span>
                 </div>
                 <div className="timeline">
                   {!result && !running && <div className="timeline-loading"><span /> ready to collect evidence</div>}
-                  {running && <div className="timeline-loading"><span /> executing public tests, planning probes, and collecting evidence…</div>}
+                  {running && <div className="timeline-loading"><span /> cloning revisions, executing tests, planning probes, and collecting evidence…</div>}
                   {timeline.map((item, index) => (
                     <div className="timeline-row" key={`${item.title}-${index}`}>
-                      <div className={`timeline-icon ${item.state}`}>
-                        {item.state === "done" ? <Check size={14} /> : <X size={14} />}
-                      </div>
+                      <div className={`timeline-icon ${item.state}`}>{item.state === "done" ? <Check size={14} /> : <X size={14} />}</div>
                       <div><strong>{item.title}</strong><span>{item.detail}</span></div>
                       <small>{String(index + 1).padStart(2, "0")}</small>
                     </div>
