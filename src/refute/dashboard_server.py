@@ -14,6 +14,7 @@ from .github_pr import (
     prepare_github_pr_case,
 )
 from .llm import LLMError, provider_from_env
+from .real_repo_adversary import run_nearby_adversary
 from .verify_v5 import verify_case_v5
 
 
@@ -76,6 +77,26 @@ def _verification_payload(result, case, *, source: dict[str, object] | None = No
         "probes": probes,
         "evidence_path": str(result.run_root.resolve()),
         "source": source,
+        "nearby_adversary": None,
+    }
+
+
+def _nearby_payload(result) -> dict[str, object]:
+    return {
+        "candidate_count": len(result.candidates),
+        "selected_ids": list(result.selected_ids),
+        "used_fallback": result.used_fallback,
+        "collection_error": result.collection_error,
+        "executions": [
+            {
+                "candidate_id": item.candidate.candidate_id,
+                "nodeid": item.candidate.nodeid,
+                "classification": item.classification,
+                "original": _execution_payload(item.original),
+                "patched": _execution_payload(item.patched),
+            }
+            for item in result.executions
+        ],
     }
 
 
@@ -99,7 +120,7 @@ def _github_metadata_payload(metadata) -> dict[str, object]:
 
 
 class DashboardHandler(BaseHTTPRequestHandler):
-    server_version = "refute-dashboard/0.3"
+    server_version = "refute-dashboard/0.4"
 
     def _send_json(self, status: int, payload: object) -> None:
         body = json.dumps(payload, indent=2).encode("utf-8")
@@ -198,7 +219,32 @@ class DashboardHandler(BaseHTTPRequestHandler):
             source["reproduction_mode"] = (
                 "patch_changed_tests" if len(case.test_command) > 2 else "full_suite_fallback"
             )
-            self._send_json(HTTPStatus.OK, _verification_payload(result, case, source=source))
+            payload = _verification_payload(result, case, source=source)
+
+            if result.test_delta.classification == "suite_repaired" and result.verdict.value == "inconclusive":
+                nearby = run_nearby_adversary(
+                    case,
+                    llm,
+                    budget=3,
+                    timeout_seconds=execution_timeout,
+                )
+                nearby_payload = _nearby_payload(nearby)
+                payload["nearby_adversary"] = nearby_payload
+                (result.run_root / "nearby_adversary.json").write_text(
+                    json.dumps(nearby_payload, indent=2) + "\n",
+                    encoding="utf-8",
+                )
+                regressions = [item for item in nearby.executions if item.is_regression]
+                if regressions:
+                    first = regressions[0]
+                    payload["verdict"] = "regression_introduced"
+                    payload["reason"] = (
+                        "The reported trigger is repaired, but an agent-prioritized existing nearby test passes on the base revision "
+                        f"and fails on the patch: {first.candidate.nodeid}."
+                    )
+                    payload["challenge_counterexamples"] = int(payload["challenge_counterexamples"]) + 1
+
+            self._send_json(HTTPStatus.OK, payload)
         except (GitHubPRIngestionError, CaseFormatError, LLMError, OSError, ValueError, json.JSONDecodeError) as exc:
             self._send_json(HTTPStatus.BAD_REQUEST, {"error": str(exc)})
 
