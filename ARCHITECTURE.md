@@ -2,154 +2,222 @@
 
 ## Design thesis
 
-`refute` separates semantic reasoning from mechanical truth.
+`refute` separates semantic prioritization from mechanical truth.
 
-Agents decide **what should be investigated or challenged**. Deterministic runtime components establish **what actually happened**. Final verification must be constrained by persisted evidence.
+> **Agents prioritize. Deterministic tools observe. Evidence constrains the verdict.**
 
-## High-level flow
+The final system deliberately narrows the language model's responsibility. The model does not decide whether a command passed, does not author arbitrary executable assertions in the frozen Iteration 5 path, and does not directly choose the final verdict.
+
+## Frozen Benchmark v2 architecture
 
 ```text
-CLI
-  |
-  v
-Run Orchestrator
-  |
-  +--> Investigator Agent      (semantic reasoning)
-  |
-  +--> Reproducer Agent        (semantic reasoning + bounded retry)
-  |        |
-  |        v
-  |    Runtime Executor        (deterministic)
-  |
-  +--> Challenger Agent        (targeted falsification)
-  |        |
-  |        v
-  |    Runtime Executor        (deterministic)
-  |
-  +--> Regression Runner       (deterministic)
-  |
-  v
-Evidence Store + Provenance
-  |
-  v
-Verifier
-  |
-  v
-Verdict + Report + Limitations
+public issue contract + original/patched fixture
+                    |
+                    v
+             public pytest run
+                    |
+                    v
+           deterministic test delta
+                    |
+        +-----------+-----------+
+        |                       |
+        | repaired trigger      | other evidence shape
+        v                       v
+ deterministic public-      deterministic
+ contract probe compiler    test-first triage
+        |
+        v
+ bounded valid probe pool
+        |
+        v
+ agent prioritizes probe IDs
+        |
+        v
+ deterministic probe execution
+ on original + patched code
+        |
+        v
+ deterministic evidence policy
+        |
+        v
+ five-way verdict + evidence store
 ```
 
-## Current architecture boundary
+### Why this boundary exists
 
-The Milestone 2 backbone establishes these package boundaries before the advanced agents are implemented:
+Iterations 3.x and 4 progressively reduced model freedom but still asked the model to invent executable or semantic assertions. Accuracy remained around 30% on Benchmark v2. Iteration 5 moved mechanically recognizable requirements into deterministic compilation and left the model only bounded prioritization. That structural change produced the frozen 10/10 Benchmark v2 result.
+
+## Real GitHub PR product path
+
+The developer-facing path adds repository ingestion and reproduction around the same evidence-first core.
+
+```text
+public GitHub PR URL
+        |
+        v
+PR inspection + base/head SHAs + public contract
+        |
+        v
+isolated per-run workspace + Python environment
+        |
+        v
+changed pytest tests detected?
+   | yes                    | no
+   v                        v
+copy patch-authored         full-suite fallback
+changed tests onto base
+   |
+   v
+same reproduction on base + patch
+   |
+   v
+reported trigger repaired?
+   |
+   v
+try deterministic contract probes
+   |
+   +--> probes available -> agent prioritizes valid probe IDs
+   |
+   +--> no probes -> bounded nearby existing-test candidate ranking
+                         |
+                         v
+                  agent prioritizes candidates
+                         |
+                         v
+                  deterministic execution
+                         |
+                         v
+                evidence-backed verdict
+```
+
+The nearby-test adversary may discover a concrete regression when an existing test passes on base and fails on patch. Surviving nearby tests increase confidence but do not by themselves prove completeness, so a run may remain `inconclusive`.
+
+## Product surfaces
+
+All user surfaces call the same Python verification machinery.
+
+```text
+CLI ---------------------+
+                         |
+React/Vite dashboard --> local dashboard API --> verification engine
+                         |
+MCP stdio server --------+
+```
+
+### CLI
+
+Reproducible benchmark and local-case interface.
+
+### Dashboard
+
+Human-facing workflow with two modes:
+
+- controlled Benchmark v2 cases;
+- compatible public GitHub Python/pytest PRs.
+
+The dashboard renders the public PR contract, execution/reproduction timeline, probes or nearby-test evidence, and final verdict.
+
+### MCP
+
+`src/refute/mcp_server.py` exposes the same real-PR workflow to coding-agent hosts over local stdio MCP.
+
+Tools:
+
+```text
+inspect_pr          read-only PR inspection
+verify_pr           starts async verification after explicit human approval
+get_verify_job      polls long-running verification
+get_run             reads persisted evidence without re-execution
+```
+
+`verify_pr` is asynchronous because dependency provisioning and repository tests can take minutes while many MCP clients impose much shorter request timeouts.
+
+## Major components
 
 ```text
 src/refute/
-├── agents/          # semantic roles: investigator, reproducer, challenger, verifier
-├── benchmark/       # case discovery and evaluation
-├── evidence/        # evidence records, artifacts and provenance index
-├── providers/       # model provider boundary
-├── runtime/         # deterministic execution boundary
-├── orchestrator.py  # verification-run state machine
-├── baseline.py      # static baseline experiment
-├── case.py          # benchmark case loader
-├── executor.py      # current deterministic subprocess implementation
-└── cli.py           # user-facing commands
+├── agents/
+│   ├── probe_compiler_v5.py     deterministic public-contract -> probe compiler
+│   └── probe_planner_v5.py      bounded model prioritization of valid probe IDs
+├── benchmark/                   evaluation and oracle-loading boundary
+├── evidence/                    append-only evidence/provenance records
+├── cli.py                       command-line surface
+├── dashboard_server.py          local dashboard API + async live-run jobs
+├── github_pr.py                 public PR inspection, revisions, env/reproduction setup
+├── real_repo_adversary.py       bounded existing-test candidate ranking/planning/execution
+├── mcp_server.py                stdio MCP tools + async verification jobs
+├── executor.py                  deterministic subprocess execution
+├── orchestrator.py              run state machine
+└── verify_v5.py                 frozen Iteration 5 benchmark verifier
+
+frontend/                        React/Vite dashboard
+benchmark_v2/                    public oracle-free controlled cases
+eval/benchmark_v2/               evaluator-only verdicts + hidden checks
+traces/                          normalized coding-agent development trajectories
 ```
 
-The compatibility modules (`executor.py`, `llm.py`, etc.) remain in place while the architecture evolves, avoiding a disruptive refactor during the hackathon.
+## Evidence model
 
-## Responsibilities
+Every material runtime observation should be persisted with:
 
-### Run orchestrator
-
-Owns verification state and legal stage transitions. It does not decide whether a patch is correct.
-
-Planned stages:
-
-1. loaded
-2. investigated
-3. reproduction attempted
-4. original verified
-5. patch verified
-6. challenged
-7. regression checked
-8. verdict ready
-9. complete
-
-### Agents
-
-Agents are used only where semantic judgment is useful.
-
-- **Investigator**: interpret the issue, expected behavior, likely code path and risk areas.
-- **Reproducer**: synthesize an executable reproduction and revise it using execution feedback.
-- **Challenger**: generate targeted nearby cases intended to falsify an apparently successful patch.
-- **Verifier**: explain the evidence-constrained verdict and limitations.
-
-The role names are architectural responsibilities, not a requirement that four separate model instances must exist.
-
-### Runtime
-
-The runtime is deterministic. It owns command execution, timeouts, exit status, stdout/stderr and later sandbox controls.
-
-An LLM must never be asked to decide whether a command passed when the runtime already has the exit code.
-
-### Evidence
-
-Every material observation should become an `EvidenceRecord` with:
-
-- evidence ID,
-- run ID,
-- case ID,
-- workflow stage,
-- evidence kind,
-- human-readable summary,
-- artifact path where applicable,
+- run ID;
+- case ID;
+- workflow stage;
+- evidence kind;
+- summary;
+- artifact path where applicable;
 - structured metadata.
 
-The evidence store writes an append-only `evidence.jsonl` provenance index and immutable run artifacts.
-
-### Benchmark
-
-The benchmark subsystem owns fair comparison between the baseline and later advanced stages.
-
-The baseline and advanced solution must run on the same cases. Ground-truth verdicts are evaluation-only and are never passed to the model.
-
-## Baseline
-
-The baseline is intentionally simple but reasonable:
+Per-run evidence lives under:
 
 ```text
-issue report + source diff
-        |
-        v
-single static coding-agent review
-        |
-        v
-structured verdict
+artifacts/runs/<run_id>/
 ```
 
-It performs no execution, reproduction or adversarial testing.
+The evidence store maintains an append-only `evidence.jsonl` provenance index. Product integrations may add structured sidecar files such as `nearby_adversary.json` or `mcp_result.json`, but those do not replace the underlying deterministic test evidence.
 
-`refute eval-baseline benchmark` produces aggregate accuracy, false-acceptance rate, per-class accuracy, a confusion matrix and persisted evaluation reports.
+## Verdict semantics
 
-## Advanced target
-
-The advanced workflow will evolve incrementally:
+The final output is one of:
 
 ```text
-baseline
-  -> deterministic execution
-  -> investigator
-  -> reproduction loop
-  -> challenger
-  -> regression verification
-  -> evidence-constrained verifier
+complete_fix
+partial_fix
+ineffective_fix
+regression_introduced
+inconclusive
 ```
 
-Each addition must be evaluated on the same benchmark before it is considered useful.
+A stronger verdict requires stronger observed evidence. `inconclusive` is not an error state; it is the required outcome when the evidence does not justify certainty.
+
+## Benchmark integrity boundary
+
+Benchmark v2 public cases contain no expected verdict. Evaluator-only material lives under `eval/benchmark_v2/` and is loaded only after a verdict exists for scoring.
+
+The frozen Iteration 5 verifier must not read:
+
+```text
+eval/benchmark_v2/oracles.json
+eval/benchmark_v2/hidden_tests.json
+```
+
+The real GitHub PR product path is separate from the Benchmark v2 metric and must not be presented as evidence for the 10/10 benchmark score.
+
+## Safety boundary
+
+The GitHub workflow can install declared dependencies and execute third-party pytest code. Current safeguards are:
+
+- public PRs only;
+- explicit human approval before execution;
+- isolated per-run Python environment;
+- bounded execution timeouts;
+- no automatic merge/deploy action;
+- deterministic evidence collection.
+
+The per-run Python environment is **not** strong OS/container sandboxing. The current hackathon product therefore does not claim safe execution of arbitrary untrusted repositories.
 
 ## Core invariant
 
-> Agents propose and reason. Deterministic tools observe. Evidence constrains the verdict.
+If a fact is mechanically observable, an agent should not be responsible for inventing it.
 
-If the available evidence cannot support a conclusion, `refute` should return `inconclusive` rather than manufacture certainty.
+If the available evidence cannot support a conclusion, `refute` returns `inconclusive` rather than manufacturing certainty.
