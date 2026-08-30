@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 import re
 from dataclasses import dataclass
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 
 from .executor import run_command
 from .llm import LLM, LLMError
@@ -30,6 +30,7 @@ Rules:
 class NearbyTestCandidate:
     candidate_id: str
     nodeid: str
+    relevance_score: int = 0
 
 
 @dataclass(frozen=True, slots=True)
@@ -81,20 +82,81 @@ def _test_name(nodeid: str) -> str:
     return leaf.split("[", 1)[0]
 
 
-def discover_nearby_tests(case: VerificationCase, *, timeout_seconds: float = 30.0, limit: int = 40) -> tuple[tuple[NearbyTestCandidate, ...], str | None]:
+def _nodeid_path(nodeid: str) -> str:
+    return nodeid.split("::", 1)[0].replace("\\", "/")
+
+
+def _signal_tokens(text: str) -> set[str]:
+    tokens = {
+        token.casefold()
+        for token in re.findall(r"[A-Za-z_][A-Za-z0-9_]{2,}", text)
+        if len(token) >= 4
+    }
+    stop = {
+        "test", "tests", "pytest", "python", "from", "with", "that", "this",
+        "return", "raise", "class", "def", "true", "false", "none", "patch",
+    }
+    return tokens - stop
+
+
+def _candidate_relevance(nodeid: str, context: dict, issue_text: str) -> int:
+    path = _nodeid_path(nodeid)
+    candidate_tokens = _signal_tokens(nodeid)
+    changed_tests = [str(value).replace("\\", "/") for value in context.get("changed_tests", []) if isinstance(value, str)]
+    changed_files = [str(value).replace("\\", "/") for value in context.get("changed_files", []) if isinstance(value, str)]
+    diff = str(context.get("diff", ""))[:16000]
+
+    score = 0
+    for changed in changed_tests:
+        if path == changed:
+            score += 80
+        elif PurePosixPath(path).parent == PurePosixPath(changed).parent:
+            score += 25
+        if PurePosixPath(path).stem.replace("test_", "") in PurePosixPath(changed).stem:
+            score += 12
+
+    for changed in changed_files:
+        stem = PurePosixPath(changed).stem.casefold()
+        if stem and stem in path.casefold():
+            score += 18
+
+    semantic_tokens = _signal_tokens(issue_text + "\n" + diff)
+    score += min(30, 3 * len(candidate_tokens & semantic_tokens))
+    return score
+
+
+def discover_nearby_tests(
+    case: VerificationCase,
+    *,
+    timeout_seconds: float = 30.0,
+    limit: int = 40,
+) -> tuple[tuple[NearbyTestCandidate, ...], str | None]:
     if limit < 1:
         raise ValueError("candidate limit must be positive")
     context = _load_context(case)
     added = {str(value) for value in context.get("added_test_names", []) if isinstance(value, str)}
-    command = tuple(case.test_command) + ("--collect-only",)
-    collected = run_command(command, case.patched_path, timeout_seconds)
+
+    # Important: case.test_command may contain patch-changed test paths for the
+    # reproduction stage. Nearby discovery must collect the *full* suite instead
+    # of accidentally restricting itself to those changed files.
+    runner_prefix = tuple(case.test_command[:2])
+    collected = run_command(runner_prefix + ("--collect-only",), case.patched_path, timeout_seconds)
     if collected.timed_out or collected.exit_code not in {0, 5}:
         detail = (collected.stderr or collected.stdout).strip()
         return (), f"pytest collection failed: {detail[-500:]}"
 
-    nodeids = [nodeid for nodeid in _parse_nodeids(collected.stdout) if _test_name(nodeid) not in added]
-    nodeids = nodeids[:limit]
-    candidates = tuple(NearbyTestCandidate(f"t{index + 1}", nodeid) for index, nodeid in enumerate(nodeids))
+    ranked: list[tuple[int, str]] = []
+    for nodeid in _parse_nodeids(collected.stdout):
+        if _test_name(nodeid) in added:
+            continue
+        ranked.append((_candidate_relevance(nodeid, context, case.issue_text), nodeid))
+
+    ranked.sort(key=lambda item: (-item[0], item[1]))
+    chosen = ranked[:limit]
+    candidates = tuple(
+        NearbyTestCandidate(f"t{index + 1}", nodeid, score)
+        for index, (score, nodeid) in enumerate(chosen)
+    )
     return candidates, None
 
 
@@ -107,9 +169,12 @@ def _build_prompt(case: VerificationCase, candidates: tuple[NearbyTestCandidate,
         f"CHANGED TEST FILES:\n{', '.join(str(x) for x in changed_tests) or '(none)'}",
         f"PATCH DIFF:\n{diff or '(diff unavailable)'}",
         f"BUDGET: {min(budget, len(candidates))}",
-        "EXISTING NEARBY TEST CANDIDATES:",
+        "EXISTING NEARBY TEST CANDIDATES (deterministically ranked first):",
     ]
-    parts.extend(f"{candidate.candidate_id}: {candidate.nodeid}" for candidate in candidates)
+    parts.extend(
+        f"{candidate.candidate_id}: score={candidate.relevance_score} | {candidate.nodeid}"
+        for candidate in candidates
+    )
     return "\n\n".join(parts) + "\n"
 
 
