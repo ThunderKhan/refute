@@ -70,7 +70,17 @@ refute eval-advanced holdout_v1 --oracle-root eval\holdout_v1 --provider ollama 
 
 The first baseline attempt failed before producing benchmark results because the local model provider timed out. This is recorded as an execution failure, not converted into a score. The deterministic-order and frozen Iteration 5 evaluations then completed without code changes.
 
+A single later baseline retry was allowed only to distinguish a transient provider failure from a reproducible evaluation result. `ollama list` confirmed `qwen3:0.6b` was installed, but the retry again failed with `could not reach language-model provider: timed out` before producing any case-level score. No further baseline retries are part of this protocol. Holdout v1 therefore has **no static-baseline accuracy result**; the absence is reported as a repeated local provider timeout rather than imputed, discarded, or retried until successful.
+
 ## First observed Holdout v1 results
+
+### Static baseline
+
+- first attempt: provider timeout before benchmark result
+- one permitted retry: provider timeout before benchmark result
+- model installation check: `qwen3:0.6b` present locally
+- reported accuracy: **unavailable**
+- interpretation: execution/provider failure, not a scored benchmark outcome
 
 ### Deterministic-order ablation, no model planner
 
