@@ -191,7 +191,22 @@ c2604717e69fb99c2d30e17ee4f586d4463e3bd032e55344684e9db9992b5cb1
 
 The audit confirmed 12 public cases, 12 evaluator-only oracles, and no verdict oracle in public material.
 
-The static baseline did not produce a Holdout v1 score. The first attempt timed out at the local Ollama provider before producing case-level results. One later retry was permitted only to test whether the failure was transient; `ollama list` confirmed `qwen3:0.6b` was installed, but the retry again timed out before evaluation. No further retries are included in the protocol. Baseline accuracy on Holdout v1 is therefore reported as **unavailable due to repeated provider timeout**, not as zero and not as a selectively discarded result.
+The original aggregate baseline evaluator aborted at the first provider timeout. Diagnosis showed Ollama and `/api/chat` were healthy, while `holdout_006` and `holdout_012` alone exceeded a 90-second request timeout. The evaluator was therefore hardened to record provider failures per case and continue. This changed evaluation orchestration only; the baseline prompt/model and all verifier semantics remained unchanged. A regression test was added, bringing the current suite to **93 passed in 68.98s** at this checkpoint.
+
+### Static baseline on Holdout v1
+
+Using `qwen3:0.6b` with a 90-second per-request timeout:
+
+- total cases: **12**
+- completed cases: **10**
+- provider errors/timeouts: **2** (`holdout_006`, `holdout_012`)
+- conservative verdict accuracy over all 12 cases: **33.3%** (4/12)
+- accuracy over completed cases only: **40.0%**
+- false acceptance rate: **30.0%**
+- average runtime including timeout cases: **16.883s/case**
+- evaluation complete: **no**
+
+The headline accuracy keeps all 12 cases in the denominator, so timed-out cases are not silently discarded. Error rows are excluded from the confusion matrix rather than fabricated into verdicts.
 
 ### Deterministic-order ablation on Holdout v1
 
@@ -218,6 +233,8 @@ The static baseline did not produce a Holdout v1 score. The first attempt timed 
 Interpretation:
 - the post-freeze set exposes a real generalization gap: **100.0% → 83.3% accuracy** and **0.0% → 20.0% FAR** relative to Benchmark v2;
 - nevertheless, 10 of 12 unseen cases were classified correctly without verifier tuning after the holdout was frozen;
+- the static baseline managed only **33.3% conservative accuracy over all 12 cases**, or **40.0% on its 10 completed cases**, with two provider timeouts;
+- the deterministic-order and Iteration 5 systems therefore retain a large holdout advantage over static review, although the baseline comparison is explicitly incomplete;
 - the same two cases were missed by both deterministic ordering and the LLM planner;
 - the planner again provided **no measured verdict improvement** under the tested two-probe budget;
 - the planner path was substantially slower and incurred two provider/planner failures that triggered deterministic fallback.
