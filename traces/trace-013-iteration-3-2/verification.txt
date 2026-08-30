@@ -1,0 +1,25 @@
+Verification status: PENDING LOCAL RUN
+
+Iteration 3.1 observed result supplied by human:
+- python -m pytest: 56 passed in 43.99s
+- Benchmark v2: 30.0% accuracy, 0.0% FAR, 0.0% Challenger case yield, 0 counterexamples, 20.438s average runtime
+- most suite-repaired cases exhausted two generation attempts without producing an executable grounded challenge
+
+Iteration 3.2 hypothesis:
+Replace free-form exact quote reproduction with deterministic contract spans and model-selected contract IDs. Remove the separate Investigator call from the challenge path.
+
+Required local checks:
+1. git pull
+2. python -m pytest
+3. python scripts/build_benchmark_v2.py
+4. targeted case_001, case_002, case_003, case_006, case_007 with --iteration 3.2
+5. full Benchmark v2 evaluation with --iteration 3.2
+
+Success signals:
+- materially fewer challenge_generation_failures than Iteration 3.1;
+- executable challenge candidates on suite-repaired cases;
+- useful counterexamples on partial/regression cases without access to hidden tests;
+- FAR remains materially below Iteration 2.4's 57.1%;
+- runtime improves from Iteration 3.1 by eliminating the Investigator call.
+
+Do not claim Iteration 3.2 improvement until a clean local result is supplied.
