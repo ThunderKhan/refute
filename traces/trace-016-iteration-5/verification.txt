@@ -1,30 +1,52 @@
-Verification status: PENDING LOCAL RUN
+Verification status: PROVISIONAL BREAKTHROUGH; REPORT-WRITER FIX PENDING RERUN
 
-Iteration 5 hypothesis:
-A small local model is more reliable when choosing among deterministic public-contract-grounded probes than when inventing assertions, test code, or structured semantic intents.
+Human verification supplied on 2026-08-30:
 
-Architecture:
-- deterministic public tests run first;
-- only suite-repaired cases enter the probe path;
-- a deterministic compiler recognizes a deliberately small MVP contract vocabulary and emits valid pytest probes from public issue text + public API only;
-- the language model sees probe IDs/descriptions and prioritizes probes under a bounded budget;
-- if planner output is unusable or provider execution fails, selection falls back to deterministic probe order and records the fallback explicitly;
-- probe tests execute deterministically on original and patch;
-- no oracle or hidden-test material is loaded by the compiler, planner, or verifier.
+1. `python -m pytest`
+   - 72 passed in 61.48s
 
-Required local checks:
-1. git pull
-2. python -m pytest
-3. python scripts/build_benchmark_v2.py
-4. targeted case_001, case_002, case_003, case_006, case_007 with --iteration 5
-5. full Benchmark v2 evaluation with --iteration 5
+2. `python scripts/build_benchmark_v2.py`
+   - built 10 public cases under `benchmark_v2`
 
-Observe:
-- whether case_002 becomes partial_fix from an inclusive-upper-boundary compiled probe;
-- whether case_003 becomes regression_introduced from an internal-space preservation probe;
-- whether case_006 becomes partial_fix from very-small-limit length probes;
-- whether case_007 becomes regression_introduced from exception-preservation probes;
-- whether case_001 accumulates two survived range probes and becomes complete_fix;
-- planner fallback frequency, accuracy, FAR, Challenger yield, and runtime.
+3. Targeted Iteration 5 verification
+   - case_001: `complete_fix`, 2 survived probes, planner used, no fallback
+   - case_002: `partial_fix`, 1 remaining-requirement counterexample, planner used, no fallback
+   - case_003: `regression_introduced`, 1 regression counterexample, planner used, no fallback
+   - case_006: `partial_fix`, 1 remaining-requirement counterexample, planner used, no fallback
+   - case_007: `regression_introduced`, 1 regression counterexample, planner used, no fallback
+   - all five targeted runs had 0 challenge-generation failures
 
-Do not claim Iteration 5 improvement until a clean local result is supplied.
+4. Full Benchmark v2 evaluation reached all ten cases before report generation failed:
+   - case_001: complete_fix (correct)
+   - case_002: partial_fix (correct)
+   - case_003: regression_introduced (correct)
+   - case_004: ineffective_fix (correct)
+   - case_005: complete_fix (correct)
+   - case_006: partial_fix (correct)
+   - case_007: regression_introduced (correct)
+   - case_008: ineffective_fix (correct)
+   - case_009: complete_fix (correct)
+   - case_010: inconclusive (correct)
+   - planner fallback: no on every displayed case
+   - displayed per-case runtimes sum to 52.04s, approximately 5.204s/case
+
+The evaluator then crashed only while writing the aggregate report:
+`NameError: name 'challenger_iterations' is not defined`
+in `_write_reports` after all ten case predictions had already completed.
+
+Interpretation:
+- the case-level evidence is a provisional 10/10 correct classification result with zero observed false accepts;
+- this is not yet frozen as the official Iteration 5 metric because the aggregate evaluator did not return normally;
+- the failure is a reporting-layer scoping bug, not a verification-path failure;
+- the structural change appears to have broken the 30% plateau: the model now prioritizes deterministic public-contract probes instead of inventing tests or assertions.
+
+Fix applied:
+- `CHALLENGER_ITERATIONS` is now a module-level constant shared by summarization, progress formatting, and report writing;
+- this removes the report-writer `NameError` without changing Iteration 5 verification semantics.
+
+Required clean rerun:
+1. `git pull`
+2. `python -m pytest`
+3. rerun the full Benchmark v2 Iteration 5 evaluation
+
+Do not freeze the 100.0% claim until that rerun completes and writes the aggregate artifacts successfully.
