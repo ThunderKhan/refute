@@ -1,0 +1,10 @@
+{
+  "trace": "trace-014-iteration-3-3",
+  "iteration": "3.3",
+  "status": "pending_local_verification",
+  "provider_target": "ollama",
+  "model_target": "qwen3:0.6b",
+  "benchmark": "benchmark_v2",
+  "oracle_separated": true,
+  "hidden_chain_of_thought_included": false
+}
