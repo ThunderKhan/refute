@@ -1,10 +1,10 @@
 # Reproduction Guide
 
-This guide reproduces the frozen `refute` Benchmark v2 result for Advanced Iteration 5.
+This guide reproduces the frozen `refute` Benchmark v2 result for Advanced Iteration 5 and separately validates the current product surfaces added afterward: the dashboard, public-GitHub-PR workflow, and MCP server.
 
 ## Environment
 
-Tested configuration:
+Reference configuration:
 
 - Windows PowerShell
 - Python 3.11+
@@ -12,7 +12,7 @@ Tested configuration:
 - model: `qwen3:0.6b`
 - benchmark: oracle-separated Benchmark v2
 
-The project itself has no runtime Python dependencies. `pytest` is installed through the `dev` extra for tests and benchmark cases.
+The core verifier has no mandatory runtime Python dependencies. `pytest` and the MCP SDK are installed through development/optional extras. The frontend uses Node/npm separately.
 
 ## 1. Clone and install
 
@@ -33,11 +33,9 @@ ollama pull qwen3:0.6b
 ollama list
 ```
 
-If the Ollama desktop/service is not already running, start it before evaluation.
+If the Ollama desktop/service is not already running, start it before evaluation or live verification.
 
 ## 3. Build and audit Benchmark v2
-
-Benchmark v2 public cases are generated from the controlled legacy benchmark while withholding evaluator-only verdicts and hidden tests.
 
 ```powershell
 python scripts/build_benchmark_v2.py
@@ -56,15 +54,21 @@ AUDIT PASSED: public cases are oracle-free and hidden behavior is separated as d
 python -m pytest
 ```
 
-Frozen local verification on 2026-08-30:
+Frozen Iteration 5 measurement-point verification on 2026-08-30:
 
 ```text
 72 passed in 63.16s
 ```
 
-Exact wall-clock time can vary by machine.
+After the dashboard, real-PR, and MCP integrations were added, the project suite was later locally verified as:
 
-## 5. Optional: inspect one public case
+```text
+92 passed in 67.48s
+```
+
+The 92-test result validates the later product code; it does **not** replace or retroactively change the frozen Iteration 5 benchmark measurement.
+
+## 5. Optional: inspect one public benchmark case
 
 ```powershell
 refute inspect benchmark_v2\case_002
@@ -129,7 +133,7 @@ Expected per-case verdicts:
 
 Wall-clock runtime may vary. Verdicts are the primary reproducibility target.
 
-## 8. Inspect generated evidence
+## 8. Inspect generated benchmark evidence
 
 Per-run evidence is written under:
 
@@ -147,11 +151,85 @@ artifacts/eval/advanced_iteration_5_benchmark_v2/
   report.md
 ```
 
-The frozen human-supplied verification transcript is preserved at:
+The frozen human-supplied Iteration 5 verification transcript is preserved at:
 
 ```text
 traces/trace-016-iteration-5/verification.txt
 ```
+
+## 9. Run the local dashboard
+
+Install/build the frontend:
+
+```powershell
+cd frontend
+npm install
+npm run build
+cd ..
+```
+
+Start the Python dashboard API in one terminal:
+
+```powershell
+python -m refute.dashboard_server
+```
+
+Start Vite in another terminal:
+
+```powershell
+cd frontend
+npm run dev
+```
+
+Open `http://localhost:5173/verify`.
+
+Two verification modes are available:
+
+- **Benchmark**: reproducible controlled cases such as `case_002`.
+- **GitHub PR**: a public Python/pytest PR. The user must explicitly acknowledge that refute will provision dependencies and execute target-repository tests locally.
+
+The GitHub mode is not part of the frozen 10-case benchmark metric.
+
+## 10. Validate the public-GitHub-PR path
+
+A compatible PR can be pasted into the dashboard. When the PR changes pytest files, refute can reuse those patch-authored tests as a deterministic reproduction against base and patch. If the normal public-contract compiler cannot produce independent probes, a bounded nearby-test adversary can prioritize existing tests while deterministic execution decides whether they survive or reveal a regression.
+
+A real-repository run may validly end as `inconclusive` even after the reported trigger is repaired. Passing a few nearby tests is confidence evidence, not proof of completeness.
+
+### Safety boundary
+
+The current implementation creates an isolated per-run Python environment but does **not** provide strong OS/container sandboxing. Installing dependencies and running tests executes third-party code locally. Use only repositories you are willing to execute and keep the explicit human approval gate enabled.
+
+## 11. Validate MCP integration
+
+The local stdio MCP server is optional:
+
+```powershell
+python -m refute.mcp_server
+```
+
+For MCP Inspector development:
+
+```powershell
+mcp dev src/refute/mcp_server.py
+```
+
+The Inspector launcher may require `uv` as development tooling:
+
+```powershell
+python -m pip install uv
+```
+
+The proven MCP flow is:
+
+```text
+inspect_pr(url)
+verify_pr(url, confirm_execution=true) -> job_id
+get_verify_job(job_id) -> poll until complete
+get_run(run_id) -> persisted result without re-execution
+```
+
+`verify_pr` is asynchronous so long dependency/test runs do not depend on one MCP request staying open. See [`docs/MCP_INTEGRATION.md`](docs/MCP_INTEGRATION.md) for host configuration.
 
 ## Benchmark separation rule
 
@@ -181,6 +259,25 @@ Iteration 5 is not a general theorem prover or universal patch verifier. It meas
 
 The benchmark deliberately includes complete fixes, partial fixes, ineffective patches, regressions, and one case where the available evidence is insufficient. The system is rewarded for returning `inconclusive` rather than fabricating certainty in that last case.
 
+## Final clean-clone checklist
+
+Before submission, perform one final run from a newly cloned directory and record:
+
+```text
+Git commit SHA
+Python version
+Ollama version
+model name
+benchmark audit result
+pytest result
+frontend npm build result
+one benchmark verification result
+one public-PR inspect/verification result
+MCP inspect -> async verify -> persisted get_run result
+```
+
+Do not claim this final clean-clone pass until it has actually been executed.
+
 ## Troubleshooting
 
 If Ollama returns a connection-refused error, confirm the Ollama application/service is running. `ollama list` should show `qwen3:0.6b` before evaluation.
@@ -191,4 +288,6 @@ If generated Benchmark v2 cases are missing, rerun:
 python scripts/build_benchmark_v2.py
 ```
 
-If you are comparing results after changing code or prompts, do not overwrite the frozen Iteration 5 claim. Treat the modified configuration as a new experiment and record it separately.
+If MCP Inspector reports that `uv` is not recognized, install `uv` as development tooling or test the stdio server directly through the Python executable used by the host.
+
+If you are comparing results after changing verification code or prompts, do not overwrite the frozen Iteration 5 claim. Treat the modified configuration as a new experiment and record it separately.
