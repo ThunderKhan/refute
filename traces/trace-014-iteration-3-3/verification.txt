@@ -1,27 +1,41 @@
-Verification status: PENDING LOCAL RUN
+Verification status: VERIFIED LOCALLY; NEGATIVE EXPERIMENT RECORDED
 
-Iteration 3.3 hypothesis:
-Retain deterministic contract-ID grounding from 3.2, but separate challenge proposal from evidence qualification. Any executable challenge that fails on the patch must pass a strict contract-entailment Critic before it can influence the verdict.
+Human verification supplied on 2026-08-30:
 
-Required local checks:
-1. git pull
-2. python -m pytest
-3. python scripts/build_benchmark_v2.py
-4. targeted case_001, case_002, case_003, case_006, case_007 with --iteration 3.3
-5. full Benchmark v2 evaluation with --iteration 3.3
+1. `python -m pytest`
+   - 63 passed in 55.76s
 
-Observe specifically:
-- whether case_002 can produce a critic-approved remaining-requirement counterexample;
-- whether case_003 and case_007 can produce critic-approved regression counterexamples;
-- whether bogus fail/fail challenges on true complete fixes are rejected by the Critic rather than becoming partial_fix;
-- challenge generation failures and critic failures separately;
-- FAR, accuracy, Challenger yield, and runtime.
+2. `python scripts/build_benchmark_v2.py`
+   - built 10 public cases under `benchmark_v2`
 
-Frozen comparisons:
-- Baseline v2: 10.0% accuracy / 57.1% FAR / 2.527s
-- Iteration 2.4: 60.0% accuracy / 57.1% FAR / 0.929s
-- Iteration 3: 40.0% accuracy / 0.0% FAR / 14.774s
-- Iteration 3.1: 30.0% accuracy / 0.0% FAR / 20.438s
-- Iteration 3.2: 30.0% accuracy / 0.0% FAR / 25.966s
+3. Targeted Iteration 3.3 checks
+   - case_001: 2 executable candidates, both `unsupported_counterexample`; critic called, 0 critic failures; verdict `inconclusive`
+   - case_002: 1 executable candidate after 1 generation failure, `unsupported_counterexample`; critic called, 0 critic failures; verdict `inconclusive`
+   - case_003: 2 executable candidates, both `unsupported_counterexample`; critic called, 0 critic failures; verdict `inconclusive`
+   - case_006: 1 executable candidate after 1 generation failure, `unsupported_counterexample`; critic called, 0 critic failures; verdict `inconclusive`
+   - case_007: 1 generated candidate after 1 generation failure, `invalid_execution`; critic not called; verdict `inconclusive`
 
-Do not claim Iteration 3.3 improvement until a clean local result is supplied.
+4. Full Benchmark v2 command
+   `refute eval-advanced benchmark_v2 --oracle-root eval\benchmark_v2 --provider ollama --model qwen3:0.6b --iteration 3.3 --llm-timeout 30`
+
+Result:
+- cases: 10
+- completed cases: 10
+- errors: 0
+- verdict accuracy: 30.0%
+- false acceptance rate: 0.0%
+- Challenger case yield: 0.0%
+- challenge counterexamples: 0
+- challenge generation failures: 7
+- challenge critic failures: 0
+- average runtime: 27.624s
+
+Interpretation:
+- the separate Critic was operationally reliable: no critic call failed;
+- every patch-failing generated assertion that reached the Critic was rejected as unsupported;
+- safety remained strong but the Challenger recovered none of the hidden partial/regression cases;
+- runtime worsened because the workflow still paid for free-form test authoring plus semantic criticism;
+- the repeated 30.0% plateau across 3.1, 3.2, and 3.3 shows that further prompt-format tuning is not justified.
+
+Decision:
+Stop the 3.x prompt-tuning line. The next experiment is a structural redesign: Challenger emits a typed semantic test intent rather than Python source; a Critic validates the intent; deterministic code compiles the intent into pytest before execution.
