@@ -188,14 +188,14 @@ export default function LiveVerifyPage() {
                   {githubMeta && (
                     <label className="execution-consent">
                       <input type="checkbox" checked={confirmed} onChange={(event) => setConfirmed(event.target.checked)} />
-                      <span>I understand this runs the PR's tests on my machine.</span>
+                      <span>I understand refute will create an isolated environment, install the repository's declared Python/test dependencies, and run its pytest suite locally.</span>
                     </label>
                   )}
 
                   <button className="pill-button orange full" onClick={runVerification} disabled={running || !githubMeta || !confirmed}>
-                    {running ? <><Sparkles size={15} /> Verifying PR…</> : <><Play size={15} fill="currentColor" /> Verify patch</>}
+                    {running ? <><Sparkles size={15} /> Provisioning & verifying…</> : <><Play size={15} fill="currentColor" /> Verify patch</>}
                   </button>
-                  <p className="microcopy">Current real-repo scope: public GitHub PRs, Python, and a detectable pytest test surface. Dependencies are not installed automatically.</p>
+                  <p className="microcopy">Current real-repo scope: public GitHub PRs, Python, and a detectable pytest test surface. Target dependencies are installed into an isolated per-run environment, not your refute environment.</p>
                 </>
               ) : (
                 <>
@@ -240,7 +240,7 @@ export default function LiveVerifyPage() {
                 </div>
                 <div className="timeline">
                   {!result && !running && <div className="timeline-loading"><span /> ready to collect evidence</div>}
-                  {running && <div className="timeline-loading"><span /> cloning revisions, executing tests, planning probes, and collecting evidence…</div>}
+                  {running && <div className="timeline-loading"><span /> cloning revisions, provisioning an isolated environment, executing tests, planning probes, and collecting evidence…</div>}
                   {timeline.map((item, index) => (
                     <div className="timeline-row" key={`${item.title}-${index}`}>
                       <div className={`timeline-icon ${item.state}`}>{item.state === "done" ? <Check size={14} /> : <X size={14} />}</div>
