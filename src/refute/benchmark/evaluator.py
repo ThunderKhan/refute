@@ -7,7 +7,7 @@ from pathlib import Path
 
 from ..baseline import run_baseline
 from ..case import load_case
-from ..llm import LLM
+from ..llm import LLM, LLMError
 from ..models import Verdict
 from .oracle import expected_verdict_for_case
 
@@ -20,6 +20,7 @@ class CaseEvaluation:
     correct: bool
     runtime_seconds: float
     reason: str
+    error: str | None = None
 
 
 def discover_cases(root: str | Path) -> list[Path]:
@@ -58,18 +59,32 @@ def evaluate_baseline(
         case = load_case(case_dir)
         expected = expected_verdict_for_case(case, oracle_root)
         started = time.perf_counter()
-        baseline = run_baseline(case, llm, artifacts_root)
-        duration = time.perf_counter() - started
-        results.append(
-            CaseEvaluation(
-                case_id=case.case_id,
-                expected=expected.value,
-                predicted=baseline.verdict.value,
-                correct=baseline.verdict is expected,
-                runtime_seconds=duration,
-                reason=baseline.reason,
+        try:
+            baseline = run_baseline(case, llm, artifacts_root)
+            duration = time.perf_counter() - started
+            results.append(
+                CaseEvaluation(
+                    case_id=case.case_id,
+                    expected=expected.value,
+                    predicted=baseline.verdict.value,
+                    correct=baseline.verdict is expected,
+                    runtime_seconds=duration,
+                    reason=baseline.reason,
+                )
             )
-        )
+        except LLMError as exc:
+            duration = time.perf_counter() - started
+            results.append(
+                CaseEvaluation(
+                    case_id=case.case_id,
+                    expected=expected.value,
+                    predicted="error",
+                    correct=False,
+                    runtime_seconds=duration,
+                    reason=f"evaluation error: {exc}",
+                    error=str(exc),
+                )
+            )
 
     summary = _summarize(
         results,
@@ -90,12 +105,19 @@ def _summarize(
     oracle_separated: bool,
 ) -> dict:
     total = len(results)
+    errors = sum(item.error is not None for item in results)
+    completed = total - errors
     correct = sum(item.correct for item in results)
+
+    # Headline accuracy is intentionally conservative: provider/evaluation errors
+    # remain in the denominator and therefore count as not-correct.
     accuracy = correct / total if total else 0.0
+    completed_accuracy = correct / completed if completed else 0.0
 
     non_complete = [item for item in results if item.expected != Verdict.COMPLETE_FIX.value]
     false_accepts = sum(
-        item.predicted == Verdict.COMPLETE_FIX.value for item in non_complete
+        item.error is None and item.predicted == Verdict.COMPLETE_FIX.value
+        for item in non_complete
     )
     false_acceptance_rate = (
         false_accepts / len(non_complete) if non_complete else 0.0
@@ -109,8 +131,9 @@ def _summarize(
     class_correct = {verdict.value: 0 for verdict in Verdict}
 
     for item in results:
-        confusion[item.expected][item.predicted] += 1
         class_counts[item.expected] += 1
+        if item.error is None and item.predicted in {verdict.value for verdict in Verdict}:
+            confusion[item.expected][item.predicted] += 1
         if item.correct:
             class_correct[item.expected] += 1
 
@@ -129,8 +152,12 @@ def _summarize(
         "provider": provider_name,
         "model": model_name,
         "cases": total,
+        "completed_cases": completed,
+        "errors": errors,
+        "evaluation_complete": errors == 0,
         "correct": correct,
         "verdict_accuracy": accuracy,
+        "verdict_accuracy_completed_cases": completed_accuracy,
         "false_acceptance_rate": false_acceptance_rate,
         "average_runtime_seconds": (
             sum(item.runtime_seconds for item in results) / total if total else 0.0
@@ -163,19 +190,23 @@ def _write_reports(
         f"- Provider: `{summary['provider']}`",
         f"- Model: `{summary['model']}`",
         f"- Cases: {summary['cases']}",
+        f"- Completed cases: {summary['completed_cases']}",
+        f"- Errors: {summary['errors']}",
         f"- Oracle separated: {'yes' if summary['benchmark_oracle_separated'] else 'no'}",
-        f"- Verdict accuracy: {summary['verdict_accuracy']:.1%}",
+        f"- Verdict accuracy (all cases): {summary['verdict_accuracy']:.1%}",
+        f"- Verdict accuracy (completed cases): {summary['verdict_accuracy_completed_cases']:.1%}",
         f"- False acceptance rate: {summary['false_acceptance_rate']:.1%}",
         f"- Average runtime: {summary['average_runtime_seconds']:.3f}s",
         "",
         "## Cases",
         "",
-        "| Case | Expected | Predicted | Correct |",
-        "|---|---|---|---|",
+        "| Case | Expected | Predicted | Correct | Error |",
+        "|---|---|---|---|---|",
     ]
     for item in results:
+        error = item.error or ""
         lines.append(
             f"| {item.case_id} | {item.expected} | {item.predicted} | "
-            f"{'yes' if item.correct else 'no'} |"
+            f"{'yes' if item.correct else 'no'} | {error} |"
         )
     (report_root / "report.md").write_text("\n".join(lines) + "\n", encoding="utf-8")
