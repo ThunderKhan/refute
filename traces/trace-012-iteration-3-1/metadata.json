@@ -1,0 +1,9 @@
+{
+  "trace": "trace-012-iteration-3-1",
+  "engineering_round": "Advanced Iteration 3.1 grounded Challenger",
+  "status": "pending_local_verification",
+  "model": "qwen3:0.6b",
+  "benchmark": "benchmark_v2",
+  "oracle_visible_to_agents": false,
+  "hidden_tests_visible_to_agents": false
+}
