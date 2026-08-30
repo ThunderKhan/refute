@@ -6,7 +6,9 @@ from refute.github_pr import (
     GitHubPRIngestionError,
     _declared_test_dependencies,
     _detect_pytest,
+    _is_pytest_file,
     _linked_issue_number,
+    _materialize_patch_tests_on_base,
     parse_github_pr_url,
 )
 
@@ -45,6 +47,36 @@ def test_detect_pytest_from_tests_directory(tmp_path: Path) -> None:
 
 def test_detect_pytest_rejects_unknown_project(tmp_path: Path) -> None:
     assert _detect_pytest(tmp_path) is None
+
+
+@pytest.mark.parametrize(
+    ("path", "expected"),
+    [
+        ("tests/test_cli.py", True),
+        ("pkg/test_api.py", True),
+        ("pkg/api_test.py", True),
+        ("tests/helpers.py", True),
+        ("src/app.py", False),
+        ("docs/test_plan.md", False),
+    ],
+)
+def test_is_pytest_file(path: str, expected: bool) -> None:
+    assert _is_pytest_file(path) is expected
+
+
+def test_materialize_patch_tests_on_base_copies_only_selected_files(tmp_path: Path) -> None:
+    original = tmp_path / "original"
+    patched = tmp_path / "patched"
+    (original / "tests").mkdir(parents=True)
+    (patched / "tests").mkdir(parents=True)
+    (patched / "tests" / "test_fix.py").write_text("def test_fix():\n    assert True\n", encoding="utf-8")
+    (patched / "src").mkdir()
+    (patched / "src" / "app.py").write_text("VALUE = 2\n", encoding="utf-8")
+
+    _materialize_patch_tests_on_base(original, patched, ("tests/test_fix.py",))
+
+    assert (original / "tests" / "test_fix.py").read_text(encoding="utf-8") == "def test_fix():\n    assert True\n"
+    assert not (original / "src" / "app.py").exists()
 
 
 def test_declared_test_dependencies_collects_runtime_and_test_groups(tmp_path: Path) -> None:
