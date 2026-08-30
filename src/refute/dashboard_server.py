@@ -99,7 +99,7 @@ def _github_metadata_payload(metadata) -> dict[str, object]:
 
 
 class DashboardHandler(BaseHTTPRequestHandler):
-    server_version = "refute-dashboard/0.2"
+    server_version = "refute-dashboard/0.3"
 
     def _send_json(self, status: int, payload: object) -> None:
         body = json.dumps(payload, indent=2).encode("utf-8")
@@ -194,6 +194,10 @@ class DashboardHandler(BaseHTTPRequestHandler):
             source["mode"] = "github_pr"
             source["workspace"] = str(case.root.resolve())
             source["test_command"] = " ".join(case.test_command)
+            source["reproduction_targets"] = list(case.test_command[2:])
+            source["reproduction_mode"] = (
+                "patch_changed_tests" if len(case.test_command) > 2 else "full_suite_fallback"
+            )
             self._send_json(HTTPStatus.OK, _verification_payload(result, case, source=source))
         except (GitHubPRIngestionError, CaseFormatError, LLMError, OSError, ValueError, json.JSONDecodeError) as exc:
             self._send_json(HTTPStatus.BAD_REQUEST, {"error": str(exc)})
