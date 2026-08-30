@@ -13,6 +13,7 @@
     "lucide-react": "0.468.0",
     "react": "latest",
     "react-dom": "latest",
+    "react-markdown": "latest",
     "react-router-dom": "latest"
   },
   "devDependencies": {
