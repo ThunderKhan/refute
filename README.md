@@ -38,7 +38,7 @@ The system runs the original and patched code, derives nearby checks from the pu
 `case_002` is the simplest example of the core idea: the reported lower boundary is repaired, but the same public contract still requires the upper boundary to work.
 
 <p align="center">
-  <img src="assets/refute-case-002-falsification.png" alt="case_002 falsification walkthrough showing a partial fix discovered by refute" width="100%">
+  <img src="assets/refute-case-study.png" alt="case_002 falsification walkthrough showing a partial fix discovered by refute" width="100%">
 </p>
 
 ---
