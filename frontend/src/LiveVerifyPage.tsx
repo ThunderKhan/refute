@@ -9,6 +9,7 @@ import {
   type GitHubPRMetadata,
   type VerificationPayload,
 } from "./api";
+import MarkdownBlock from "./MarkdownBlock";
 
 type Mode = "github" | "benchmark";
 
@@ -219,7 +220,7 @@ export default function LiveVerifyPage() {
               <div className="issue-card">
                 <div className="card-label">{mode === "github" ? "PR / issue contract" : "Public issue contract"}</div>
                 <h3>{issueTitle}</h3>
-                <p className="issue-copy-live">{issueText}</p>
+                <MarkdownBlock>{issueText}</MarkdownBlock>
                 {githubMeta && githubMeta.linked_issue_number && (
                   <div className="linked-issue-chip">Linked issue #{githubMeta.linked_issue_number}{githubMeta.linked_issue_title ? ` · ${githubMeta.linked_issue_title}` : ""}</div>
                 )}
