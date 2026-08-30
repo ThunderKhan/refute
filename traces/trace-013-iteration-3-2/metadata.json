@@ -1,0 +1,9 @@
+{
+  "trace_id": "trace-013-iteration-3-2",
+  "engineering_round": "Advanced Iteration 3.2 deterministic contract IDs",
+  "status": "pending_local_verification",
+  "model_under_evaluation": "qwen3:0.6b",
+  "oracle_visible_to_agents": false,
+  "hidden_tests_visible_to_agents": false,
+  "notes": "Observable engineering trace only; no hidden chain-of-thought is recorded."
+}
