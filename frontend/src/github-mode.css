@@ -119,6 +119,38 @@
 .markdown-block ul,
 .markdown-block ol { margin: 10px 0; padding-left: 22px; }
 .markdown-block li { margin: 4px 0; }
+.markdown-block ul.contains-task-list {
+  padding-left: 0;
+  list-style: none;
+}
+.markdown-block .task-list-item {
+  display: grid;
+  grid-template-columns: 18px 1fr;
+  align-items: start;
+  gap: 9px;
+  list-style: none;
+}
+.markdown-block .task-list-item input[type="checkbox"] {
+  appearance: none;
+  width: 15px;
+  height: 15px;
+  margin: 5px 0 0;
+  border: 1px solid rgba(245,242,235,.42);
+  border-radius: 4px;
+  background: transparent;
+  display: grid;
+  place-items: center;
+  opacity: 1;
+}
+.markdown-block .task-list-item input[type="checkbox"]:checked {
+  border-color: var(--primary);
+  background: var(--primary);
+}
+.markdown-block .task-list-item input[type="checkbox"]:checked::after {
+  content: "✓";
+  color: white;
+  font: 700 11px/1 system-ui, sans-serif;
+}
 .markdown-block code {
   padding: 2px 5px;
   border-radius: 4px;
