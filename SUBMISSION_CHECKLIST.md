@@ -52,10 +52,45 @@ refute eval-baseline benchmark_v2 --oracle-root eval\benchmark_v2 --provider oll
 refute eval-advanced benchmark_v2 --oracle-root eval\benchmark_v2 --provider ollama --model qwen3:0.6b --iteration 5 --llm-timeout 30
 ```
 
-- [ ] Baseline completes all 10 cases.
-- [ ] Advanced completes all 10 cases.
-- [ ] Per-case advanced verdicts match `REPRODUCTION_GUIDE.md`.
-- [ ] Do not silently replace frozen metrics if wall-clock timing changes.
+- [x] Baseline completes all 10 cases.
+- [x] Advanced completes all 10 cases.
+- [x] Per-case advanced verdicts match `REPRODUCTION_GUIDE.md`.
+- [x] Frozen metric claims remain unchanged; fresh-clone wall-clock timing is recorded separately.
+
+Fresh-clone reproduction on 2026-08-30:
+
+```text
+Baseline v2
+verdict accuracy: 10.0%
+false acceptance rate: 57.1%
+average runtime: 2.495s
+
+Advanced Iteration 5
+completed cases: 10
+errors: 0
+verdict accuracy: 100.0%
+false acceptance rate: 0.0%
+challenger case yield: 57.1%
+challenge counterexamples: 4
+challenge generation failures: 0
+probe planner fallback cases: 0
+average runtime: 5.322s
+```
+
+Expected verdict sequence reproduced exactly:
+
+```text
+case_001 complete_fix
+case_002 partial_fix
+case_003 regression_introduced
+case_004 ineffective_fix
+case_005 complete_fix
+case_006 partial_fix
+case_007 regression_introduced
+case_008 ineffective_fix
+case_009 complete_fix
+case_010 inconclusive
+```
 
 ## 5. Dashboard build and live verification
 
@@ -176,4 +211,4 @@ Suggested structure:
 
 ## Stop condition
 
-The clean-clone install/audit/tests/frontend-build/MCP-import gate has passed. Do not add new verification semantics unless a submission-blocking defect is found. Prefer documentation, evidence, and demo reliability over new features.
+The clean-clone install/audit/tests/frontend-build/MCP-import/benchmark-reproduction gate has passed. Do not add new verification semantics unless a submission-blocking defect is found. Prefer documentation, evidence, and demo reliability over new features.
