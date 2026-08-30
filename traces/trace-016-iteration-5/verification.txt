@@ -1,52 +1,54 @@
-Verification status: PROVISIONAL BREAKTHROUGH; REPORT-WRITER FIX PENDING RERUN
+Verification status: FROZEN CLEAN RESULT
 
-Human verification supplied on 2026-08-30:
+Human verification supplied on 2026-08-30.
 
-1. `python -m pytest`
-   - 72 passed in 61.48s
+Local tests:
+- `python -m pytest`
+- **72 passed in 63.16s**
 
-2. `python scripts/build_benchmark_v2.py`
-   - built 10 public cases under `benchmark_v2`
+Clean Benchmark v2 command:
+`refute eval-advanced benchmark_v2 --oracle-root eval\benchmark_v2 --provider ollama --model qwen3:0.6b --iteration 5 --llm-timeout 30`
 
-3. Targeted Iteration 5 verification
-   - case_001: `complete_fix`, 2 survived probes, planner used, no fallback
-   - case_002: `partial_fix`, 1 remaining-requirement counterexample, planner used, no fallback
-   - case_003: `regression_introduced`, 1 regression counterexample, planner used, no fallback
-   - case_006: `partial_fix`, 1 remaining-requirement counterexample, planner used, no fallback
-   - case_007: `regression_introduced`, 1 regression counterexample, planner used, no fallback
-   - all five targeted runs had 0 challenge-generation failures
+Per-case result:
+- case_001: `complete_fix` — correct — 2 survived probes — 6.63s
+- case_002: `partial_fix` — correct — 1 remaining-requirement counterexample — 4.92s
+- case_003: `regression_introduced` — correct — 1 regression counterexample — 14.37s
+- case_004: `ineffective_fix` — correct — deterministic path — 0.94s
+- case_005: `complete_fix` — correct — 2 survived probes — 4.77s
+- case_006: `partial_fix` — correct — 1 remaining-requirement counterexample — 4.43s
+- case_007: `regression_introduced` — correct — 1 regression counterexample — 3.72s
+- case_008: `ineffective_fix` — correct — deterministic path — 0.90s
+- case_009: `complete_fix` — correct — 2 survived probes — 9.28s
+- case_010: `inconclusive` — correct — deterministic path — 0.81s
 
-4. Full Benchmark v2 evaluation reached all ten cases before report generation failed:
-   - case_001: complete_fix (correct)
-   - case_002: partial_fix (correct)
-   - case_003: regression_introduced (correct)
-   - case_004: ineffective_fix (correct)
-   - case_005: complete_fix (correct)
-   - case_006: partial_fix (correct)
-   - case_007: regression_introduced (correct)
-   - case_008: ineffective_fix (correct)
-   - case_009: complete_fix (correct)
-   - case_010: inconclusive (correct)
-   - planner fallback: no on every displayed case
-   - displayed per-case runtimes sum to 52.04s, approximately 5.204s/case
+Frozen aggregate:
+- cases: **10**
+- completed: **10/10**
+- errors: **0**
+- verdict accuracy: **100.0%**
+- false acceptance rate: **0.0%**
+- Challenger case yield: **57.1%**
+- executable counterexamples: **4**
+- challenge generation failures: **0**
+- probe planner fallback cases: **0**
+- average runtime: **5.077s/case**
 
-The evaluator then crashed only while writing the aggregate report:
-`NameError: name 'challenger_iterations' is not defined`
-in `_write_reports` after all ten case predictions had already completed.
+Comparison on the same oracle-separated Benchmark v2:
+- Baseline v2: 10.0% accuracy / 57.1% FAR / 2.527s
+- Iteration 2.4: 60.0% accuracy / 57.1% FAR / 0.929s
+- Iteration 3: 40.0% accuracy / 0.0% FAR / 14.774s
+- Iteration 3.1: 30.0% accuracy / 0.0% FAR / 20.438s
+- Iteration 3.2: 30.0% accuracy / 0.0% FAR / 25.966s
+- Iteration 3.3: 30.0% accuracy / 0.0% FAR / 27.624s
+- Iteration 4: 30.0% accuracy / 0.0% FAR / 13.026s
+- **Iteration 5: 100.0% accuracy / 0.0% FAR / 5.077s**
 
 Interpretation:
-- the case-level evidence is a provisional 10/10 correct classification result with zero observed false accepts;
-- this is not yet frozen as the official Iteration 5 metric because the aggregate evaluator did not return normally;
-- the failure is a reporting-layer scoping bug, not a verification-path failure;
-- the structural change appears to have broken the 30% plateau: the model now prioritizes deterministic public-contract probes instead of inventing tests or assertions.
+- Iteration 5 is the first clean Benchmark v2 run to classify all ten oracle-separated cases correctly.
+- The decisive architectural change was to stop asking the small model to invent executable tests, assertions, or semantic expectations. Deterministic public-contract compilation produces a bounded probe pool; the model only prioritizes probe IDs; deterministic execution supplies the evidence.
+- Four hidden nearby-failure classes were recovered from public contracts without exposing evaluator oracles/hidden tests to the verification path: inclusive upper boundary, internal-space preservation, tiny truncation limits, and exception specificity.
+- Complete-fix verdicts required two independent survived probes rather than a single easy success.
+- No planner fallback was required in the frozen run, so the measured result includes meaningful model participation rather than purely deterministic probe order.
 
-Fix applied:
-- `CHALLENGER_ITERATIONS` is now a module-level constant shared by summarization, progress formatting, and report writing;
-- this removes the report-writer `NameError` without changing Iteration 5 verification semantics.
-
-Required clean rerun:
-1. `git pull`
-2. `python -m pytest`
-3. rerun the full Benchmark v2 Iteration 5 evaluation
-
-Do not freeze the 100.0% claim until that rerun completes and writes the aggregate artifacts successfully.
+Important limitation:
+- Benchmark v2 contains ten controlled synthetic cases and the deterministic contract compiler recognizes a deliberately small MVP contract vocabulary. The 100.0% result is therefore evidence about this benchmark and architecture, not a claim of general software-verification accuracy.
