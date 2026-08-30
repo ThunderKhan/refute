@@ -44,11 +44,7 @@ class GitHubPRMetadata:
         if self.body.strip():
             chunks.extend(["", self.body.strip()])
         if self.linked_issue_number is not None:
-            chunks.extend([
-                "",
-                f"## Linked issue #{self.linked_issue_number}",
-                self.linked_issue_title or "",
-            ])
+            chunks.extend(["", f"## Linked issue #{self.linked_issue_number}", self.linked_issue_title or ""])
             if self.linked_issue_body and self.linked_issue_body.strip():
                 chunks.extend(["", self.linked_issue_body.strip()])
         return "\n".join(chunks).strip() + "\n"
@@ -126,15 +122,9 @@ def fetch_github_pr_metadata(value: str) -> GitHubPRMetadata:
         raise GitHubPRIngestionError("GitHub PR metadata did not include base/head revisions")
 
     return GitHubPRMetadata(
-        url=value.strip(),
-        owner=owner,
-        repo=repo,
-        number=number,
-        title=str(payload.get("title") or f"PR #{number}"),
-        body=body,
-        base_sha=base_sha,
-        head_sha=head_sha,
-        clone_url=clone_url,
+        url=value.strip(), owner=owner, repo=repo, number=number,
+        title=str(payload.get("title") or f"PR #{number}"), body=body,
+        base_sha=base_sha, head_sha=head_sha, clone_url=clone_url,
         changed_files=int(payload.get("changed_files") or 0),
         additions=int(payload.get("additions") or 0),
         deletions=int(payload.get("deletions") or 0),
@@ -147,13 +137,9 @@ def fetch_github_pr_metadata(value: str) -> GitHubPRMetadata:
 def _run_git(args: list[str], cwd: Path | None = None) -> None:
     try:
         completed = subprocess.run(
-            ["git", *args],
-            cwd=cwd,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            text=True,
-            timeout=120,
-            check=False,
+            ["git", *args], cwd=cwd,
+            stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+            text=True, timeout=120, check=False,
         )
     except (OSError, subprocess.TimeoutExpired) as exc:
         raise GitHubPRIngestionError(f"git operation failed: {exc}") from exc
@@ -181,7 +167,14 @@ def prepare_github_pr_case(metadata: GitHubPRMetadata, workspace_root: str | Pat
 
     try:
         _run_git(["clone", "--quiet", "--filter=blob:none", "--no-checkout", metadata.clone_url, str(source)])
-        _run_git(["fetch", "--quiet", "origin", metadata.base_sha, metadata.head_sha], cwd=source)
+        _run_git(["fetch", "--quiet", "origin", metadata.base_sha], cwd=source)
+        # GitHub exposes pull-request heads in the base repository even when the
+        # contributor branch lives in a fork. Fetching this ref makes fork PRs
+        # work without adding an untrusted fork remote.
+        _run_git([
+            "fetch", "--quiet", "origin",
+            f"refs/pull/{metadata.number}/head:refs/remotes/origin/refute-pr-head",
+        ], cwd=source)
         _run_git(["worktree", "add", "--quiet", "--detach", str(original), metadata.base_sha], cwd=source)
         _run_git(["worktree", "add", "--quiet", "--detach", str(patched), metadata.head_sha], cwd=source)
     except Exception:
