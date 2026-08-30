@@ -8,12 +8,18 @@ from pathlib import Path
 from urllib.parse import urlparse
 
 from .case import CaseFormatError, load_case
+from .github_pr import (
+    GitHubPRIngestionError,
+    fetch_github_pr_metadata,
+    prepare_github_pr_case,
+)
 from .llm import LLMError, provider_from_env
 from .verify_v5 import verify_case_v5
 
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_BENCHMARK_ROOT = REPO_ROOT / "benchmark_v2"
+GITHUB_WORKSPACE_ROOT = REPO_ROOT / "artifacts" / "github-workspaces"
 
 
 def _execution_payload(result) -> dict[str, object]:
@@ -33,11 +39,11 @@ def _case_payload(case_dir: Path) -> dict[str, object]:
         "case_id": case.case_id,
         "title": title,
         "issue_text": case.issue_text,
-        "test_command": case.test_command,
+        "test_command": " ".join(case.test_command),
     }
 
 
-def _verification_payload(result, case) -> dict[str, object]:
+def _verification_payload(result, case, *, source: dict[str, object] | None = None) -> dict[str, object]:
     probes = []
     for execution in result.challenge_executions:
         probes.append(
@@ -69,11 +75,31 @@ def _verification_payload(result, case) -> dict[str, object]:
         "challenge_counterexamples": sum(item.is_counterexample for item in result.challenge_executions),
         "probes": probes,
         "evidence_path": str(result.run_root.resolve()),
+        "source": source,
+    }
+
+
+def _github_metadata_payload(metadata) -> dict[str, object]:
+    return {
+        "url": metadata.url,
+        "owner": metadata.owner,
+        "repo": metadata.repo,
+        "number": metadata.number,
+        "title": metadata.title,
+        "body": metadata.body,
+        "base_sha": metadata.base_sha,
+        "head_sha": metadata.head_sha,
+        "changed_files": metadata.changed_files,
+        "additions": metadata.additions,
+        "deletions": metadata.deletions,
+        "linked_issue_number": metadata.linked_issue_number,
+        "linked_issue_title": metadata.linked_issue_title,
+        "issue_text": metadata.issue_text,
     }
 
 
 class DashboardHandler(BaseHTTPRequestHandler):
-    server_version = "refute-dashboard/0.1"
+    server_version = "refute-dashboard/0.2"
 
     def _send_json(self, status: int, payload: object) -> None:
         body = json.dumps(payload, indent=2).encode("utf-8")
@@ -86,13 +112,21 @@ class DashboardHandler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
 
+    def _read_json(self) -> dict:
+        length = int(self.headers.get("Content-Length", "0") or "0")
+        raw = self.rfile.read(length) if length else b"{}"
+        payload = json.loads(raw.decode("utf-8"))
+        if not isinstance(payload, dict):
+            raise ValueError("request body must be a JSON object")
+        return payload
+
     def do_OPTIONS(self) -> None:  # noqa: N802
         self._send_json(HTTPStatus.NO_CONTENT, {})
 
     def do_GET(self) -> None:  # noqa: N802
         path = urlparse(self.path).path
         if path == "/api/health":
-            self._send_json(HTTPStatus.OK, {"status": "ok", "iteration": "5"})
+            self._send_json(HTTPStatus.OK, {"status": "ok", "iteration": "5", "github_pr_mode": True})
             return
         if path == "/api/cases":
             try:
@@ -116,22 +150,61 @@ class DashboardHandler(BaseHTTPRequestHandler):
 
     def do_POST(self) -> None:  # noqa: N802
         path = urlparse(self.path).path
-        if not path.startswith("/api/verify/"):
-            self._send_json(HTTPStatus.NOT_FOUND, {"error": "not found"})
+        if path == "/api/github/inspect":
+            self._inspect_github_pr()
             return
+        if path == "/api/github/verify":
+            self._verify_github_pr()
+            return
+        if path.startswith("/api/verify/"):
+            self._verify_benchmark(path.rsplit("/", 1)[-1])
+            return
+        self._send_json(HTTPStatus.NOT_FOUND, {"error": "not found"})
 
-        case_id = path.rsplit("/", 1)[-1]
+    def _inspect_github_pr(self) -> None:
+        try:
+            request = self._read_json()
+            url = str(request.get("url", "")).strip()
+            metadata = fetch_github_pr_metadata(url)
+            self._send_json(HTTPStatus.OK, _github_metadata_payload(metadata))
+        except (GitHubPRIngestionError, OSError, ValueError, json.JSONDecodeError) as exc:
+            self._send_json(HTTPStatus.BAD_REQUEST, {"error": str(exc)})
+
+    def _verify_github_pr(self) -> None:
+        try:
+            request = self._read_json()
+            if request.get("confirm_execution") is not True:
+                raise ValueError("explicit local execution confirmation is required")
+            url = str(request.get("url", "")).strip()
+            provider = str(request.get("provider", "ollama"))
+            model = str(request.get("model", "qwen3:0.6b"))
+            llm_timeout = float(request.get("llm_timeout", 30.0))
+            execution_timeout = float(request.get("execution_timeout", 30.0))
+
+            metadata = fetch_github_pr_metadata(url)
+            case = prepare_github_pr_case(metadata, GITHUB_WORKSPACE_ROOT)
+            llm = provider_from_env(provider, model, timeout_seconds=llm_timeout)
+            result = verify_case_v5(
+                case,
+                llm,
+                artifacts_root=REPO_ROOT / "artifacts",
+                timeout_seconds=execution_timeout,
+            )
+            source = _github_metadata_payload(metadata)
+            source["mode"] = "github_pr"
+            source["workspace"] = str(case.root.resolve())
+            source["test_command"] = " ".join(case.test_command)
+            self._send_json(HTTPStatus.OK, _verification_payload(result, case, source=source))
+        except (GitHubPRIngestionError, CaseFormatError, LLMError, OSError, ValueError, json.JSONDecodeError) as exc:
+            self._send_json(HTTPStatus.BAD_REQUEST, {"error": str(exc)})
+
+    def _verify_benchmark(self, case_id: str) -> None:
         case_dir = DEFAULT_BENCHMARK_ROOT / case_id
         if not case_dir.is_dir():
             self._send_json(HTTPStatus.NOT_FOUND, {"error": f"unknown case: {case_id}"})
             return
-
         try:
-            length = int(self.headers.get("Content-Length", "0") or "0")
-            raw = self.rfile.read(length) if length else b"{}"
-            request = json.loads(raw.decode("utf-8"))
-            if not isinstance(request, dict):
-                raise ValueError("request body must be a JSON object")
+            request = self._read_json()
             provider = str(request.get("provider", "ollama"))
             model = str(request.get("model", "qwen3:0.6b"))
             llm_timeout = float(request.get("llm_timeout", 30.0))
@@ -144,7 +217,7 @@ class DashboardHandler(BaseHTTPRequestHandler):
                 artifacts_root=REPO_ROOT / "artifacts",
                 timeout_seconds=execution_timeout,
             )
-            self._send_json(HTTPStatus.OK, _verification_payload(result, case))
+            self._send_json(HTTPStatus.OK, _verification_payload(result, case, source={"mode": "benchmark"}))
         except (CaseFormatError, LLMError, OSError, ValueError, json.JSONDecodeError) as exc:
             self._send_json(HTTPStatus.BAD_REQUEST, {"error": str(exc)})
 
@@ -164,6 +237,7 @@ def main(argv: list[str] | None = None) -> int:
     server = ThreadingHTTPServer((args.host, args.port), DashboardHandler)
     print(f"refute dashboard API listening on http://{args.host}:{args.port}")
     print(f"benchmark root: {DEFAULT_BENCHMARK_ROOT}")
+    print("real-repo mode: public GitHub PRs, Python + pytest, explicit local execution confirmation")
     try:
         server.serve_forever()
     except KeyboardInterrupt:
