@@ -8,6 +8,7 @@ import {
   type DashboardCase,
   type GitHubPRMetadata,
   type VerificationPayload,
+  type VerificationProgressEvent,
 } from "./api";
 import MarkdownBlock from "./MarkdownBlock";
 
@@ -24,6 +25,10 @@ function shortSha(value: string) {
 
 function normalizeHeading(value: string) {
   return value.trim().replace(/^#+\s*/, "").replace(/\s+/g, " ").toLowerCase();
+}
+
+function prettyStage(value: string) {
+  return value.replaceAll("_", " ").replace(/\b\w/g, (char) => char.toUpperCase());
 }
 
 function withoutDuplicateLeadingTitle(markdown: string, title: string) {
@@ -46,6 +51,7 @@ export default function LiveVerifyPage() {
   const [githubMeta, setGithubMeta] = useState<GitHubPRMetadata | null>(null);
   const [confirmed, setConfirmed] = useState(false);
   const [result, setResult] = useState<VerificationPayload | null>(null);
+  const [progressEvents, setProgressEvents] = useState<VerificationProgressEvent[]>([]);
   const [loadingCases, setLoadingCases] = useState(true);
   const [inspecting, setInspecting] = useState(false);
   const [running, setRunning] = useState(false);
@@ -73,6 +79,7 @@ export default function LiveVerifyPage() {
     setInspecting(true);
     setError(null);
     setResult(null);
+    setProgressEvents([]);
     setConfirmed(false);
     try {
       const metadata = await inspectGitHubPR(githubUrl.trim());
@@ -90,9 +97,10 @@ export default function LiveVerifyPage() {
     setRunning(true);
     setError(null);
     setResult(null);
+    setProgressEvents([]);
     try {
       const next = mode === "github"
-        ? await verifyGitHubPR(githubUrl.trim())
+        ? await verifyGitHubPR(githubUrl.trim(), (job) => setProgressEvents(job.events))
         : await verifyCase(selected);
       setResult(next);
     } catch (err) {
@@ -197,8 +205,8 @@ export default function LiveVerifyPage() {
           <div className="container verify-grid">
             <aside className="control-card live-control-card">
               <div className="mode-switch" role="tablist" aria-label="Verification mode">
-                <button className={mode === "github" ? "active" : ""} onClick={() => { setMode("github"); setResult(null); setError(null); }}>GitHub PR</button>
-                <button className={mode === "benchmark" ? "active" : ""} onClick={() => { setMode("benchmark"); setResult(null); setError(null); }}>Benchmark</button>
+                <button className={mode === "github" ? "active" : ""} onClick={() => { setMode("github"); setResult(null); setProgressEvents([]); setError(null); }}>GitHub PR</button>
+                <button className={mode === "benchmark" ? "active" : ""} onClick={() => { setMode("benchmark"); setResult(null); setProgressEvents([]); setError(null); }}>Benchmark</button>
               </div>
 
               {mode === "github" ? (
@@ -210,7 +218,7 @@ export default function LiveVerifyPage() {
                     <input
                       value={githubUrl}
                       disabled={running || inspecting}
-                      onChange={(event) => { setGithubUrl(event.target.value); setGithubMeta(null); setConfirmed(false); setResult(null); }}
+                      onChange={(event) => { setGithubUrl(event.target.value); setGithubMeta(null); setConfirmed(false); setResult(null); setProgressEvents([]); }}
                       onKeyDown={(event) => { if (event.key === "Enter") void inspectPR(); }}
                       placeholder="https://github.com/owner/repo/pull/123"
                     />
@@ -235,7 +243,7 @@ export default function LiveVerifyPage() {
                   )}
 
                   <button className="pill-button orange full" onClick={runVerification} disabled={running || !githubMeta || !confirmed}>
-                    {running ? <><Sparkles size={15} /> Provisioning & verifying…</> : <><Play size={15} fill="currentColor" /> Verify patch</>}
+                    {running ? <><Sparkles size={15} /> Verification running…</> : <><Play size={15} fill="currentColor" /> Verify patch</>}
                   </button>
                   <p className="microcopy">Patch-authored tests establish the reported trigger. When contract probes are unavailable, the agent may prioritize a bounded set of existing nearby tests; refute still executes them deterministically.</p>
                 </>
@@ -243,7 +251,7 @@ export default function LiveVerifyPage() {
                 <>
                   <div className="card-label">Reproducible demo</div>
                   <label>Benchmark case</label>
-                  <select value={selected} disabled={loadingCases || running} onChange={(event) => { setSelected(event.target.value); setResult(null); setError(null); }}>
+                  <select value={selected} disabled={loadingCases || running} onChange={(event) => { setSelected(event.target.value); setResult(null); setProgressEvents([]); setError(null); }}>
                     {cases.map((item) => <option key={item.case_id} value={item.case_id}>{item.case_id}</option>)}
                   </select>
                   <label>Provider</label>
@@ -277,13 +285,24 @@ export default function LiveVerifyPage() {
 
               <div className="timeline-card">
                 <div className="timeline-head">
-                  <div><div className="card-label">Evidence timeline</div><h3>{result?.case_id ?? (mode === "github" ? githubMeta ? `${githubMeta.repo}#${githubMeta.number}` : "waiting for PR" : selected)}</h3></div>
+                  <div><div className="card-label">{running && mode === "github" ? "Live run progress" : "Evidence timeline"}</div><h3>{result?.case_id ?? (mode === "github" ? githubMeta ? `${githubMeta.repo}#${githubMeta.number}` : "waiting for PR" : selected)}</h3></div>
                   <span className="status-pill">Iteration 5 · live</span>
                 </div>
                 <div className="timeline">
                   {!result && !running && <div className="timeline-loading"><span /> ready to collect evidence</div>}
-                  {running && <div className="timeline-loading"><span /> cloning revisions, provisioning an isolated environment, reproducing the trigger, compiling probes, selecting nearby tests when needed, and collecting evidence…</div>}
-                  {timeline.map((item, index) => (
+                  {running && mode === "github" && progressEvents.length === 0 && <div className="timeline-loading"><span /> starting verification job…</div>}
+                  {running && mode === "github" && progressEvents.map((event, index) => {
+                    const current = index === progressEvents.length - 1;
+                    return (
+                      <div className="timeline-row" key={`${event.stage}-${index}`}>
+                        <div className={`timeline-icon ${current ? "" : "done"}`}>{current ? <Sparkles size={14} /> : <Check size={14} />}</div>
+                        <div><strong>{prettyStage(event.stage)}</strong><span>{event.detail}</span></div>
+                        <small>{String(index + 1).padStart(2, "0")}</small>
+                      </div>
+                    );
+                  })}
+                  {running && mode === "benchmark" && <div className="timeline-loading"><span /> executing controlled benchmark verification…</div>}
+                  {!running && timeline.map((item, index) => (
                     <div className="timeline-row" key={`${item.title}-${index}`}>
                       <div className={`timeline-icon ${item.state}`}>{item.state === "done" ? <Check size={14} /> : <X size={14} />}</div>
                       <div><strong>{item.title}</strong><span>{item.detail}</span></div>
