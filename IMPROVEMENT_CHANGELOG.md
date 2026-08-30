@@ -191,7 +191,7 @@ c2604717e69fb99c2d30e17ee4f586d4463e3bd032e55344684e9db9992b5cb1
 
 The audit confirmed 12 public cases, 12 evaluator-only oracles, and no verdict oracle in public material.
 
-The first static-baseline attempt timed out at the local model provider before producing a result. This is recorded as an execution failure and is not converted into an accuracy score.
+The static baseline did not produce a Holdout v1 score. The first attempt timed out at the local Ollama provider before producing case-level results. One later retry was permitted only to test whether the failure was transient; `ollama list` confirmed `qwen3:0.6b` was installed, but the retry again timed out before evaluation. No further retries are included in the protocol. Baseline accuracy on Holdout v1 is therefore reported as **unavailable due to repeated provider timeout**, not as zero and not as a selectively discarded result.
 
 ### Deterministic-order ablation on Holdout v1
 
