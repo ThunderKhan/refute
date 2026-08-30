@@ -1,0 +1,25 @@
+Verification status: PENDING LOCAL RUN
+
+Measured Iteration 3.3 result supplied by human:
+- python -m pytest: 63 passed in 55.76s
+- Benchmark v2: 30.0% accuracy, 0.0% FAR, 0.0% Challenger case yield, 0 counterexamples, 7 generation failures, 0 critic failures, 27.624s average runtime
+- Critic reliably rejected patch-failing generated tests but did not recover any hidden partial/regression cases
+
+Iteration 4 structural hypothesis:
+Stop asking the model to author executable pytest source. Challenger emits a compact typed semantic intent; a separate critic validates intent entailment against a deterministic public contract span; the harness then compiles pytest source deterministically and executes it.
+
+Required local checks:
+1. git pull
+2. python -m pytest
+3. python scripts/build_benchmark_v2.py
+4. targeted case_001, case_002, case_003, case_006, case_007 with --iteration 4
+5. full Benchmark v2 evaluation with --iteration 4
+
+Success signals:
+- deterministic test compilation eliminates malformed/invalid generated pytest code;
+- at least some of case_002/case_003/case_006/case_007 produce critic-approved executable counterexamples;
+- accuracy rises above the 30.0% plateau of Iterations 3.1-3.3;
+- FAR remains below the frozen Iteration 2.4 FAR of 57.1%;
+- true complete fixes are not certified from a single easy challenge: complete_fix requires two distinct critic-approved survived intents.
+
+Do not claim Iteration 4 improvement until a clean local result is supplied.
