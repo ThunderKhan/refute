@@ -177,13 +177,22 @@ def _changed_test_files(source: Path, base_sha: str, head_sha: str) -> tuple[str
     return tuple(line.strip() for line in output.splitlines() if line.strip() and _is_pytest_file(line.strip()))
 
 
-def _materialize_patch_tests_on_base(original: Path, patched: Path, test_files: tuple[str, ...]) -> None:
-    """Place patch-authored/modified tests onto the base worktree for reproduction.
+def _added_test_names(source: Path, base_sha: str, head_sha: str, test_files: tuple[str, ...]) -> tuple[str, ...]:
+    if not test_files:
+        return ()
+    diff = _git_output(["diff", "--unified=0", base_sha, head_sha, "--", *test_files], cwd=source)
+    names: list[str] = []
+    for line in diff.splitlines():
+        if not line.startswith("+") or line.startswith("+++"):
+            continue
+        match = re.match(r"\+\s*(?:async\s+)?def\s+(test_[A-Za-z0-9_]+)\s*\(", line)
+        if match and match.group(1) not in names:
+            names.append(match.group(1))
+    return tuple(names)
 
-    This is deliberately limited to changed pytest-looking files. Production code
-    remains at the base revision, so a failure can establish the reported trigger
-    without asking an LLM to invent executable assertions.
-    """
+
+def _materialize_patch_tests_on_base(original: Path, patched: Path, test_files: tuple[str, ...]) -> None:
+    """Place patch-authored/modified tests onto the base worktree for reproduction."""
     for relative in test_files:
         source = patched / Path(relative)
         destination = original / Path(relative)
@@ -326,6 +335,20 @@ def prepare_github_pr_case(metadata: GitHubPRMetadata, workspace_root: str | Pat
         )
 
     changed_tests = _changed_test_files(source, metadata.base_sha, metadata.head_sha)
+    added_tests = _added_test_names(source, metadata.base_sha, metadata.head_sha, changed_tests)
+    diff = _git_output(["diff", "--no-ext-diff", "--unified=3", metadata.base_sha, metadata.head_sha, "--"], cwd=source)
+    (run_root / "github_context.json").write_text(
+        json.dumps(
+            {
+                "changed_tests": list(changed_tests),
+                "added_test_names": list(added_tests),
+                "diff": diff[:50000],
+            },
+            indent=2,
+        ) + "\n",
+        encoding="utf-8",
+    )
+
     if changed_tests:
         _materialize_patch_tests_on_base(original, patched, changed_tests)
 
