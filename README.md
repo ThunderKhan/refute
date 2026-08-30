@@ -1,8 +1,6 @@
 <div align="center">
 
-<img src="assets/refute-hero.png" alt="refute — evidence-backed patch verification" width="100%" />
-
-<br />
+# refute
 
 ![Python](https://img.shields.io/badge/Python-3.11%2B-3776AB?logo=python&logoColor=white)
 ![Runtime Dependencies](https://img.shields.io/badge/runtime%20dependencies-zero-00b894)
@@ -39,19 +37,11 @@ The system runs the original and patched code, derives nearby checks from the pu
 
 `case_002` is the simplest example of the core idea: the reported lower boundary is repaired, but the same public contract still requires the upper boundary to work.
 
-<p align="center">
-  <img src="assets/refute-case-002-falsification.png" alt="refute case_002 falsification demo showing a partial fix" width="100%" />
-</p>
-
 ---
 
 ## How it works
 
 The final architecture separates semantic prioritization from mechanically observable truth.
-
-<p align="center">
-  <img src="assets/refute-architecture.png" alt="refute architecture — deterministic probe compilation, bounded agent guidance, execution, evidence and verdicts" width="100%" />
-</p>
 
 The governing design rule is:
 
@@ -102,10 +92,6 @@ issue + original + patched code
 
 Every run resolves to one of five outcomes. The verdict is determined by the observed evidence pattern, not by an unconstrained model judgment.
 
-<p align="center">
-  <img src="assets/refute-verdict-system.png" alt="refute verdict system mapping evidence patterns to five patch-verification outcomes" width="100%" />
-</p>
-
 | Verdict | Meaning |
 |---|---|
 | `complete_fix` | the reported trigger is repaired and enough independent nearby checks also survive |
@@ -123,10 +109,6 @@ Every run resolves to one of five outcomes. The verdict is determined by the obs
 The final evaluation uses **Benchmark v2**, a controlled ten-case benchmark with public case material separated from evaluator-only verdicts and hidden checks.
 
 All measurements below use local Ollama with `qwen3:0.6b` at temperature `0`.
-
-<p align="center">
-  <img src="assets/refute-results-comparison.png" alt="refute Benchmark v2 comparison from static baseline to Iteration 5" width="100%" />
-</p>
 
 | System | Verdict accuracy | False acceptance rate | Avg runtime |
 |---|---:|---:|---:|
@@ -164,10 +146,6 @@ The recovered failures cover four different bug shapes:
 ## The experiment that mattered
 
 The strongest improvement did **not** come from a better prompt.
-
-<p align="center">
-  <img src="assets/refute-engineering-journey.png" alt="refute engineering journey from static prompting to deterministic evidence-backed probes" width="100%" />
-</p>
 
 Early iterations gave the model increasing responsibility: generating pytest source, grounding tests in issue text, selecting contract IDs, and then having a second model criticize generated tests. Those systems became safer, but accuracy stalled and runtime increased.
 
