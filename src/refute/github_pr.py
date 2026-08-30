@@ -6,6 +6,7 @@ import re
 import shutil
 import subprocess
 import sys
+import tomllib
 import urllib.error
 import urllib.request
 import uuid
@@ -156,6 +157,110 @@ def _detect_pytest(repo: Path) -> tuple[str, ...] | None:
     return (sys.executable, "-m", "pytest", "-q")
 
 
+def _venv_python(venv_root: Path) -> Path:
+    if os.name == "nt":
+        return venv_root / "Scripts" / "python.exe"
+    return venv_root / "bin" / "python"
+
+
+def _declared_test_dependencies(repo: Path) -> list[str]:
+    pyproject = repo / "pyproject.toml"
+    if not pyproject.is_file():
+        return ["pytest>=8,<9"]
+
+    try:
+        data = tomllib.loads(pyproject.read_text(encoding="utf-8"))
+    except (OSError, tomllib.TOMLDecodeError) as exc:
+        raise GitHubPRIngestionError(f"could not read target pyproject.toml: {exc}") from exc
+
+    deps: list[str] = []
+    project = data.get("project")
+    if isinstance(project, dict):
+        runtime = project.get("dependencies")
+        if isinstance(runtime, list):
+            deps.extend(str(item) for item in runtime if isinstance(item, str))
+        optional = project.get("optional-dependencies")
+        if isinstance(optional, dict):
+            for group_name in ("test", "tests", "dev"):
+                group = optional.get(group_name)
+                if isinstance(group, list):
+                    deps.extend(str(item) for item in group if isinstance(item, str))
+
+    groups = data.get("dependency-groups")
+    if isinstance(groups, dict):
+        for group_name in ("test", "tests", "dev"):
+            group = groups.get(group_name)
+            if isinstance(group, list):
+                deps.extend(str(item) for item in group if isinstance(item, str))
+
+    if not any(re.match(r"(?i)^pytest(?:\b|[<>=!~\[])", dep.strip()) for dep in deps):
+        deps.append("pytest>=8,<9")
+
+    return list(dict.fromkeys(dep.strip() for dep in deps if dep.strip()))
+
+
+def _provision_runtime(repo: Path, run_root: Path) -> Path:
+    runtime_root = run_root / "runtime"
+    try:
+        completed = subprocess.run(
+            [sys.executable, "-m", "venv", str(runtime_root)],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            timeout=120,
+            check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        raise GitHubPRIngestionError(f"could not create isolated target environment: {exc}") from exc
+    if completed.returncode != 0:
+        detail = (completed.stderr or completed.stdout).strip()
+        raise GitHubPRIngestionError(f"could not create isolated target environment: {detail[:400]}")
+
+    python = _venv_python(runtime_root)
+    dependencies = _declared_test_dependencies(repo)
+    try:
+        completed = subprocess.run(
+            [str(python), "-m", "pip", "install", "--disable-pip-version-check", *dependencies],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            timeout=600,
+            check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        raise GitHubPRIngestionError(f"target dependency provisioning failed: {exc}") from exc
+    if completed.returncode != 0:
+        detail = (completed.stderr or completed.stdout).strip()
+        raise GitHubPRIngestionError(
+            "target dependency provisioning failed before verification. "
+            f"pip output: {detail[-800:]}"
+        )
+    return python
+
+
+def _write_pytest_wrapper(run_root: Path, runtime_python: Path) -> Path:
+    wrapper = run_root / "run_pytest.py"
+    wrapper.write_text(
+        "from __future__ import annotations\n"
+        "import os\n"
+        "import subprocess\n"
+        "import sys\n"
+        "from pathlib import Path\n\n"
+        f"RUNTIME = Path({str(runtime_python)!r})\n"
+        "cwd = Path.cwd().resolve()\n"
+        "env = os.environ.copy()\n"
+        "pythonpath = [str(cwd), str(cwd / 'src')]\n"
+        "existing = env.get('PYTHONPATH')\n"
+        "if existing:\n"
+        "    pythonpath.append(existing)\n"
+        "env['PYTHONPATH'] = os.pathsep.join(pythonpath)\n"
+        "completed = subprocess.run([str(RUNTIME), '-m', 'pytest', '-q'], cwd=cwd, env=env)\n"
+        "raise SystemExit(completed.returncode)\n",
+        encoding="utf-8",
+    )
+    return wrapper
+
+
 def prepare_github_pr_case(metadata: GitHubPRMetadata, workspace_root: str | Path) -> VerificationCase:
     workspace_root = Path(workspace_root).resolve()
     workspace_root.mkdir(parents=True, exist_ok=True)
@@ -168,9 +273,6 @@ def prepare_github_pr_case(metadata: GitHubPRMetadata, workspace_root: str | Pat
     try:
         _run_git(["clone", "--quiet", "--filter=blob:none", "--no-checkout", metadata.clone_url, str(source)])
         _run_git(["fetch", "--quiet", "origin", metadata.base_sha], cwd=source)
-        # GitHub exposes pull-request heads in the base repository even when the
-        # contributor branch lives in a fork. Fetching this ref makes fork PRs
-        # work without adding an untrusted fork remote.
         _run_git([
             "fetch", "--quiet", "origin",
             f"refs/pull/{metadata.number}/head:refs/remotes/origin/refute-pr-head",
@@ -187,6 +289,9 @@ def prepare_github_pr_case(metadata: GitHubPRMetadata, workspace_root: str | Pat
             "refute real-repo mode currently supports public Python repositories with a detectable pytest test surface"
         )
 
+    runtime_python = _provision_runtime(patched, run_root)
+    wrapper = _write_pytest_wrapper(run_root, runtime_python)
+
     issue_path = run_root / "issue.md"
     issue_path.write_text(metadata.issue_text, encoding="utf-8")
     return VerificationCase(
@@ -195,6 +300,6 @@ def prepare_github_pr_case(metadata: GitHubPRMetadata, workspace_root: str | Pat
         issue_path=issue_path,
         original_path=original,
         patched_path=patched,
-        test_command=test_command,
-        notes="public GitHub PR ingestion; no evaluator oracle",
+        test_command=(sys.executable, str(wrapper)),
+        notes="public GitHub PR ingestion; isolated dependency environment; no evaluator oracle",
     )
