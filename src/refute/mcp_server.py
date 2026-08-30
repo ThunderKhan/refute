@@ -17,6 +17,7 @@ from refute.verify_v5 import verify_case_v5
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 ARTIFACTS_ROOT = REPO_ROOT / "artifacts"
+RUNS_ROOT = ARTIFACTS_ROOT / "runs"
 GITHUB_WORKSPACE_ROOT = ARTIFACTS_ROOT / "github-workspaces"
 
 mcp = MCPServer("refute")
@@ -316,8 +317,9 @@ def get_run(run_id: str) -> dict[str, object]:
     """Read a previously recorded refute run by run ID without executing code."""
     if not re.fullmatch(r"[A-Za-z0-9_.-]+", run_id):
         raise ValueError("invalid run_id")
-    run_root = (ARTIFACTS_ROOT / run_id).resolve()
-    if run_root.parent != ARTIFACTS_ROOT.resolve():
+
+    run_root = (RUNS_ROOT / run_id).resolve()
+    if run_root.parent != RUNS_ROOT.resolve():
         raise ValueError("invalid run_id")
 
     preferred = run_root / "mcp_result.json"
