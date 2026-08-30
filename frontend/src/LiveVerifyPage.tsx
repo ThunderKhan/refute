@@ -106,6 +106,9 @@ export default function LiveVerifyPage() {
   const reproductionTargets = Array.isArray(result?.source?.["reproduction_targets"])
     ? result?.source?.["reproduction_targets"] as string[]
     : [];
+  const noCompiledProbes = Boolean(
+    result && !result.planner_called && result.challenge_generation_failures.some((item) => item.includes("no deterministic probes compiled")),
+  );
 
   const timeline = result
     ? [
@@ -125,8 +128,10 @@ export default function LiveVerifyPage() {
             ? result.planner_fallback
               ? "Planner failed; deterministic fallback recorded"
               : "Probe prioritization completed without fallback"
-            : "Planner not needed for this evidence shape",
-          state: result.planner_fallback ? "warn" : "done",
+            : noCompiledProbes
+              ? "No deterministic probes compiled for this public contract"
+              : "Planner not needed for this evidence shape",
+          state: result.planner_fallback || noCompiledProbes ? "warn" : "done",
         },
         ...result.probes.map((probe) => ({
           title: `${probe.probe_id} · ${probe.description}`,
