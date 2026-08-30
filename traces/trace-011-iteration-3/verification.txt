@@ -1,23 +1,52 @@
-Verification status: PENDING LOCAL RUN
+Verification status: BLOCKED BY LOCAL OLLAMA SERVICE
 
-Required checks:
-1. git pull
-2. python -m pytest
-3. python scripts/build_benchmark_v2.py
-4. refute verify benchmark_v2\case_002 --provider ollama --model qwen3:0.6b --iteration 3 --llm-timeout 30
-5. refute verify benchmark_v2\case_003 --provider ollama --model qwen3:0.6b --iteration 3 --llm-timeout 30
-6. refute verify benchmark_v2\case_001 --provider ollama --model qwen3:0.6b --iteration 3 --llm-timeout 30
-7. refute eval-advanced benchmark_v2 --oracle-root eval\benchmark_v2 --provider ollama --model qwen3:0.6b --iteration 3 --llm-timeout 30
+Human verification supplied on 2026-08-30:
 
-Expected signals:
-- case_002 public suite is repaired, so Investigator and Challenger should be called; a useful upper-boundary challenge should classify as remaining_bug_counterexample and support partial_fix.
-- case_003 public suite is repaired; a useful internal-space challenge should pass original and fail patch, classifying regression_counterexample.
-- case_001 is a true complete fix; valid nearby challenges should survive on the patch rather than manufacture a counterexample.
-- the batch output should include challenger case yield and challenge counterexample count.
-- artifacts must be isolated under artifacts/eval/advanced_iteration_3_benchmark_v2/.
-- evaluator-only hidden_tests.json and oracles.json must not be used by verify_case_v3.
+1. `python -m pytest`
+   - 53 passed in 42.65s
 
-Frozen Benchmark v2 comparison:
+2. `python scripts/build_benchmark_v2.py`
+   - built 10 public cases under `benchmark_v2`
+
+3. Targeted Iteration 3 verification for `case_002`, `case_003`, and `case_001`
+   - all three failed before Challenger execution at the Investigator provider call;
+   - error: `WinError 10061` / connection actively refused by the configured local language-model provider;
+   - no Challenger-quality conclusion can be drawn from these runs.
+
+4. Batch command:
+   `refute eval-advanced benchmark_v2 --oracle-root eval\benchmark_v2 --provider ollama --model qwen3:0.6b --iteration 3 --llm-timeout 30`
+
+Observed output:
+- cases: 10
+- completed cases: 3
+- errors: 7
+- verdict accuracy: 30.0% (NOT comparable as an Iteration 3 quality metric)
+- false acceptance rate: 0.0% (NOT comparable because seven agent-required cases errored)
+- challenger case yield: 0.0% (provider-blocked, not a capability result)
+- challenge counterexamples: 0
+- average runtime: 2.444s (dominated by provider refusal timing; NOT comparable)
+
+Cases 004, 008, and 010 completed because deterministic test-first routing resolved them without an LLM call. Cases 001, 002, 003, 005, 006, 007, and 009 require Investigator/Challenger execution and failed because Ollama was not accepting connections.
+
+Interpretation:
+- `WinError 10061` means the configured Ollama HTTP endpoint actively refused the TCP connection. This is an environment/service outage, not evidence of a refute logic failure or Challenger quality.
+- The 30.0% / 0.0% / 0.0%-yield batch numbers must NOT be frozen or compared against Iteration 2.4.
+- Iteration 3 remains unmeasured until the local provider is restored and a clean run completes.
+
+Recovery:
+1. confirm the Ollama desktop/service is running;
+2. run `ollama list` and confirm `qwen3:0.6b` is present;
+3. if needed, start the service with `ollama serve` in a separate terminal (or launch the Ollama app on Windows);
+4. rerun the three targeted cases;
+5. only then rerun the ten-case Benchmark v2 batch.
+
+Commands:
+`refute verify benchmark_v2\case_002 --provider ollama --model qwen3:0.6b --iteration 3 --llm-timeout 30`
+`refute verify benchmark_v2\case_003 --provider ollama --model qwen3:0.6b --iteration 3 --llm-timeout 30`
+`refute verify benchmark_v2\case_001 --provider ollama --model qwen3:0.6b --iteration 3 --llm-timeout 30`
+`refute eval-advanced benchmark_v2 --oracle-root eval\benchmark_v2 --provider ollama --model qwen3:0.6b --iteration 3 --llm-timeout 30`
+
+Frozen Benchmark v2 comparison remains:
 - Baseline v2: 10.0% accuracy, 57.1% FAR, 2.527s average runtime.
 - Iteration 2.4: 60.0% accuracy, 57.1% FAR, 0.929s average runtime.
 
