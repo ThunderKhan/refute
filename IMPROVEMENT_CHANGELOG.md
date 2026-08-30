@@ -184,10 +184,29 @@ Every Benchmark v2 case was classified correctly:
 
 Interpretation:
 - versus Baseline v2, Iteration 5 improved verdict accuracy by **90 percentage points** and reduced FAR by **57.1 percentage points**;
-- versus the deterministic 2.4 ablation, Iteration 5 improved accuracy by **40 percentage points** and reduced FAR from **57.1% to 0.0%**;
+- versus Iteration 2.4, Iteration 5 improved accuracy by **40 percentage points** and reduced FAR from **57.1% to 0.0%**;
 - the price is higher runtime than the static baseline/test-only ablation, but substantially lower runtime than Iterations 3–4;
-- the key improvement did not come from a better prompt. It came from moving mechanically derivable semantics out of the model and leaving the model a narrow prioritization decision.
+- the key improvement came from changing the responsibility boundary: mechanically derivable semantics moved out of free-form model generation and into deterministic probes.
 
 Decision: **freeze Iteration 5 as the final advanced system for the hackathon submission.** Further work should focus on reproducibility, broader external validation, documentation, and demo quality rather than benchmark-specific tuning.
 
 Important limitation: Benchmark v2 has ten controlled synthetic cases and the contract compiler intentionally supports a small MVP vocabulary. The 100.0% result is a benchmark result, not a claim that `refute` can verify arbitrary software patches with 100% accuracy.
+
+## Post-freeze ablation — remove agent probe prioritization
+
+After Iteration 5 was frozen, a controlled component ablation replaced the LLM planner with deterministic compiler order while keeping the same deterministic contract compiler, probe budget (`2`), probe execution, classification rules, and verdict thresholds.
+
+Observed Benchmark v2 result:
+
+- cases: **10/10**
+- verdict accuracy: **100.0%**
+- false acceptance rate: **0.0%**
+- challenge counterexamples: **4**
+- average runtime: **2.043s/case**
+- model/provider calls: **0**
+
+Interpretation: **on Benchmark v2, agent probe prioritization was not necessary to achieve the final 100% accuracy under the two-probe budget.** The deterministic contract compiler plus deterministic probe order reproduced every verdict and all four counterexamples.
+
+This null ablation result changes the attribution of the final benchmark gain: Benchmark v2 strongly supports the move from model-authored semantics to deterministic contract-derived evidence, but it does not demonstrate that the LLM planner itself improved verdict accuracy.
+
+Decision: preserve the result and do not retune the verifier. Validate both the frozen Iteration 5 system and the deterministic-order ablation on a post-freeze unseen holdout.
