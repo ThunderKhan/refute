@@ -12,7 +12,7 @@ Holdout v1 therefore follows a stricter protocol:
 2. The no-agent deterministic-order ablation was added without modifying the verifier.
 3. The ablation result was observed and recorded.
 4. Holdout v1 was then authored as a new post-freeze case set.
-5. The holdout builder and audit are committed before any Iteration 5 or ablation result on Holdout v1 is observed.
+5. The holdout builder and audit were committed before any Iteration 5 or ablation result on Holdout v1 was observed.
 6. After results are observed, `verify_v5.py`, `probe_compiler_v5.py`, `probe_planner_v5.py`, classification logic, and verdict thresholds must not be changed in response to Holdout v1.
 7. Whatever result occurs is reported.
 
@@ -28,14 +28,29 @@ f84395403f5d2af59ee1b8d6170ef2c77a4fb577
 
 The later commits add evaluation/documentation infrastructure only; the holdout protocol forbids benchmark-driven verifier tuning.
 
-## Build and freeze the public set
+## Public holdout freeze
 
-```powershell
-python scripts/build_holdout_v1.py
-python scripts/audit_holdout_v1.py
+The first build/audit was performed from repository commit:
+
+```text
+211591da45fe0fea1e34a37414d6291245e1b7ff
 ```
 
-The builder prints a SHA-256 digest over every public Holdout v1 file. Record that digest before evaluation. Public `case.json` files do not contain expected verdicts; evaluator-only answers live under:
+The public Holdout v1 digest was recorded before evaluation:
+
+```text
+c2604717e69fb99c2d30e17ee4f586d4463e3bd032e55344684e9db9992b5cb1
+```
+
+The audit reported:
+
+```text
+cases: 12
+evaluator oracles: 12
+AUDIT PASSED: holdout public material contains no verdict oracle and case/oracle sets match.
+```
+
+Public `case.json` files do not contain expected verdicts; evaluator-only answers live under:
 
 ```text
 eval/holdout_v1/oracles.json
@@ -43,7 +58,7 @@ eval/holdout_v1/oracles.json
 
 ## Evaluation order
 
-Run these without editing the verifier between commands:
+The planned order was:
 
 ```powershell
 refute eval-baseline holdout_v1 --oracle-root eval\holdout_v1 --provider ollama --model qwen3:0.6b --llm-timeout 30
@@ -53,11 +68,45 @@ python scripts/eval_probe_order_ablation.py holdout_v1 --oracle-root eval\holdou
 refute eval-advanced holdout_v1 --oracle-root eval\holdout_v1 --provider ollama --model qwen3:0.6b --iteration 5 --llm-timeout 30
 ```
 
-This yields three directly comparable views:
+The first baseline attempt failed before producing benchmark results because the local model provider timed out. This is recorded as an execution failure, not converted into a score. The deterministic-order and frozen Iteration 5 evaluations then completed without code changes.
 
-- static LLM baseline;
-- deterministic contract probes with no model planner;
-- frozen Iteration 5 with bounded model probe prioritization.
+## First observed Holdout v1 results
+
+### Deterministic-order ablation, no model planner
+
+- cases: **12/12**
+- verdict accuracy: **83.3%**
+- false acceptance rate: **20.0%**
+- challenge counterexamples: **6**
+- average runtime: **2.698s/case**
+- wrong cases: `holdout_010`, `holdout_012`
+- both wrong cases were predicted `complete_fix`
+
+### Frozen Iteration 5 with model planner
+
+- completed cases: **12/12**
+- errors: **0**
+- verdict accuracy: **83.3%**
+- false acceptance rate: **20.0%**
+- Challenger case yield: **60.0%**
+- challenge counterexamples: **6**
+- challenge generation/planner failures recorded: **2**
+- planner fallback cases: **2**
+- average runtime: **9.989s/case**
+- wrong cases: `holdout_010`, `holdout_012`
+- both wrong cases were predicted `complete_fix`
+
+### Immediate interpretation
+
+The holdout demonstrates a real generalization gap relative to the 10/10 development benchmark: frozen Iteration 5 drops from **100.0% to 83.3% accuracy**, with FAR rising from **0.0% to 20.0%** on this 12-case post-freeze set.
+
+The model planner did **not** improve verdict accuracy over deterministic probe order under the same two-probe budget. Both systems found the same six counterexamples and missed the same two cases. The planner path was also materially slower and experienced two provider/planner failures that required deterministic fallback.
+
+Therefore the correct component-level claim is narrower than the original architectural hypothesis:
+
+> Within this contract domain, the deterministic contract compiler is the primary source of verification value; model-based probe prioritization has not shown measurable verdict improvement in either Benchmark v2 or Holdout v1 under the tested budget.
+
+This is not grounds for verifier tuning. The frozen result is preserved as observed.
 
 ## Interpretation rules
 
