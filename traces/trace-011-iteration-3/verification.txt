@@ -1,53 +1,72 @@
-Verification status: BLOCKED BY LOCAL OLLAMA SERVICE
+Verification status: VERIFIED LOCALLY; ITERATION 3 MEASURED
 
 Human verification supplied on 2026-08-30:
 
 1. `python -m pytest`
-   - 53 passed in 42.65s
+   - 53 passed in 37.42s
 
 2. `python scripts/build_benchmark_v2.py`
-   - built 10 public cases under `benchmark_v2`
+   - built 10 public cases under benchmark_v2
 
-3. Targeted Iteration 3 verification for `case_002`, `case_003`, and `case_001`
-   - all three failed before Challenger execution at the Investigator provider call;
-   - error: `WinError 10061` / connection actively refused by the configured local language-model provider;
-   - no Challenger-quality conclusion can be drawn from these runs.
+3. Targeted Iteration 3 runs
 
-4. Batch command:
-   `refute eval-advanced benchmark_v2 --oracle-root eval\benchmark_v2 --provider ollama --model qwen3:0.6b --iteration 3 --llm-timeout 30`
+case_002:
+- public original FAIL / patch PASS
+- Investigator called: yes
+- Challenger called: yes
+- challenge candidates executed: 1
+- counterexamples: 1
+- outcome: remaining_bug_counterexample
+- verdict: partial_fix (correct)
 
-Observed output:
-- cases: 10
-- completed cases: 3
-- errors: 7
-- verdict accuracy: 30.0% (NOT comparable as an Iteration 3 quality metric)
-- false acceptance rate: 0.0% (NOT comparable because seven agent-required cases errored)
-- challenger case yield: 0.0% (provider-blocked, not a capability result)
-- challenge counterexamples: 0
-- average runtime: 2.444s (dominated by provider refusal timing; NOT comparable)
+case_003:
+- public original FAIL / patch PASS
+- Investigator called: yes
+- Challenger called: yes
+- challenge candidates executed: 1
+- counterexamples: 1
+- outcome: remaining_bug_counterexample
+- verdict: partial_fix (wrong; oracle regression_introduced)
 
-Cases 004, 008, and 010 completed because deterministic test-first routing resolved them without an LLM call. Cases 001, 002, 003, 005, 006, 007, and 009 require Investigator/Challenger execution and failed because Ollama was not accepting connections.
+case_001:
+- public original FAIL / patch PASS
+- Investigator called: yes
+- Challenger called: yes
+- challenge candidates executed: 0
+- counterexamples: 0
+- verdict: inconclusive (wrong; oracle complete_fix)
 
-Interpretation:
-- `WinError 10061` means the configured Ollama HTTP endpoint actively refused the TCP connection. This is an environment/service outage, not evidence of a refute logic failure or Challenger quality.
-- The 30.0% / 0.0% / 0.0%-yield batch numbers must NOT be frozen or compared against Iteration 2.4.
-- Iteration 3 remains unmeasured until the local provider is restored and a clean run completes.
-
-Recovery:
-1. confirm the Ollama desktop/service is running;
-2. run `ollama list` and confirm `qwen3:0.6b` is present;
-3. if needed, start the service with `ollama serve` in a separate terminal (or launch the Ollama app on Windows);
-4. rerun the three targeted cases;
-5. only then rerun the ten-case Benchmark v2 batch.
-
-Commands:
-`refute verify benchmark_v2\case_002 --provider ollama --model qwen3:0.6b --iteration 3 --llm-timeout 30`
-`refute verify benchmark_v2\case_003 --provider ollama --model qwen3:0.6b --iteration 3 --llm-timeout 30`
-`refute verify benchmark_v2\case_001 --provider ollama --model qwen3:0.6b --iteration 3 --llm-timeout 30`
+4. Clean Benchmark v2 batch
+Command:
 `refute eval-advanced benchmark_v2 --oracle-root eval\benchmark_v2 --provider ollama --model qwen3:0.6b --iteration 3 --llm-timeout 30`
 
-Frozen Benchmark v2 comparison remains:
-- Baseline v2: 10.0% accuracy, 57.1% FAR, 2.527s average runtime.
-- Iteration 2.4: 60.0% accuracy, 57.1% FAR, 0.929s average runtime.
+Result:
+- cases: 10
+- completed: 10
+- errors: 0
+- verdict accuracy: 40.0%
+- false acceptance rate: 0.0%
+- Challenger case yield: 42.9%
+- challenge counterexamples: 5
+- average runtime: 14.774s/case
 
-Do not claim Iteration 3 improvement until a clean local batch run is supplied.
+Case outputs:
+- case_001 partial_fix wrong (3 challenges, 3 counterexamples)
+- case_002 partial_fix correct (1 challenge, 1 counterexample)
+- case_003 inconclusive wrong (0 challenges)
+- case_004 ineffective_fix correct
+- case_005 inconclusive wrong
+- case_006 inconclusive wrong
+- case_007 inconclusive wrong
+- case_008 ineffective_fix correct
+- case_009 partial_fix wrong (1 challenge, 1 counterexample)
+- case_010 inconclusive correct
+
+Interpretation:
+- FAR improved strongly from Iteration 2.4's 57.1% to 0.0%.
+- Accuracy regressed from 60.0% to 40.0%, and runtime rose from 0.929s to 14.774s/case.
+- Executable challenge yield alone is insufficient: fail/fail tests can be generated against true complete fixes and must not automatically count as remaining-bug evidence.
+- Challenger generation was also unreliable on several suite-repaired cases, producing no usable candidate or approaching the provider timeout.
+
+Decision:
+Preserve Iteration 3 as a measured safety-positive / accuracy-negative experiment. The next iteration must strengthen semantic grounding before execution and reduce generation complexity. Iteration 3.1 adds an exact issue-quote gate, one candidate per generation call, typed challenge intent, and bounded retry.
