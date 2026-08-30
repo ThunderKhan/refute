@@ -1,0 +1,12 @@
+{
+  "trace_id": "trace-016-iteration-5",
+  "engineering_round": "Advanced Iteration 5: deterministic contract probes",
+  "status": "verified locally",
+  "benchmark": "Benchmark v2",
+  "provider": "Ollama",
+  "model": "qwen3:0.6b",
+  "trace_format": "normalized observable events",
+  "private_chain_of_thought_included": false,
+  "oracle_visible_to_verifier": false,
+  "hidden_tests_visible_to_verifier": false
+}
